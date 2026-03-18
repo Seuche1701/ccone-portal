@@ -5,14 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CCONE PORTAL - EKD & VNR</title>
     <script>
-    // Capture file source BEFORE anything else loads
     window.__FILE_SOURCE=null;
-    try{
-        var x=new XMLHttpRequest();
-        x.open('GET',location.href,false);
-        x.send();
-        if(x.responseText&&x.responseText.length>1000)window.__FILE_SOURCE=x.responseText;
-    }catch(e){}
+    try{var x=new XMLHttpRequest();x.open("GET",location.href,false);x.send();if(x.responseText&&x.responseText.length>1000)window.__FILE_SOURCE=x.responseText;}catch(e){}
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -21,6 +15,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -189,18 +184,20 @@
         .chess-table::after{content:'';position:absolute;width:450px;height:450px;left:-10%;bottom:-20%;background:radial-gradient(circle,rgba(30,60,150,0.12),transparent);border-radius:50%;filter:blur(80px);pointer-events:none}
         @keyframes float-game{0%,100%{transform:translateY(0) rotate(var(--rot,0deg))}50%{transform:translateY(-12px) rotate(var(--rot,0deg))}}
         .game-float{animation:float-game 4s ease-in-out infinite}
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <div id="root"></div>
     <script type="text/babel">
+
         const{useState,useEffect,useRef}=React;
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.6.5';
+        const APP_VERSION = '5.6.6';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -212,7 +209,7 @@
         // If confirm silently returns nothing (iframe blocks it), just return true
         try{const _test=window.confirm;window.confirm=function(msg){const r=_test.call(window,msg);return r===undefined?true:r}}catch(e){window.confirm=function(){return true}}
 
-        const EMBEDDED_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxbVnkdIOeD79_YT-ca6A6DfBZj5zgSgofLM2l7Ec7qssGmS2EwzZlS-meV9iXSSk6aaQ/exec';
+        const EMBEDDED_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzcAYFsf9d1wY4GDuD8DNIA4yDYeeSfPJqqM3Um3-SvXFn1y4xVWvOXa2nwEIOeYKSP/exec';
         const GOOGLE_SCRIPT_URL = localStorage.getItem('ccone-script-url') || EMBEDDED_SCRIPT_URL;
         
                     // Wer ist CCONE background images
@@ -2585,6 +2582,12 @@ function getOrCreateSheet(){
             const[uploadStatus,setUploadStatus]=useState('');
             const[uploadResult,setUploadResult]=useState(null);
             const[errorMsg,setErrorMsg]=useState('');
+            const[githubToken,setGithubToken]=useState(()=>localStorage.getItem('ccone-github-token')||'');
+            const[showGHToken,setShowGHToken]=useState(false);
+            const[ghTokenVisible,setGhTokenVisible]=useState(false);
+            const ghRepo='Seuche1701/ccone-portal';
+            const ghFile='ccone-portal.html';
+            const ghBranch='main';
             
             useEffect(()=>{loadCloudVersion()},[]);
             
@@ -2821,6 +2824,64 @@ function getOrCreateSheet(){
                 }
             };
             
+            // Deploy to GitHub
+            const deployToGitHub=async()=>{
+                const ver=newVersion.trim();
+                if(!ver){showNotification('Bitte Versionsnummer eingeben','error');return}
+                const token=githubToken.trim();
+                if(!token){showNotification('GitHub Token fehlt','error');return}
+                const fName=fileName.trim()||'ccone-portal.html';
+                try{
+                    setUploadState('generating');setUploadProgress(10);
+                    setUploadStatus('Generiere Datei mit Version '+ver+'...');
+                    const updated=getOriginalSource(ver);
+                    setUploadProgress(20);
+                    setUploadStatus('Datei generiert ('+Math.round(updated.length/1024)+' KB)');
+                    await new Promise(r=>setTimeout(r,300));
+                    
+                    setUploadState('uploading');setUploadProgress(30);
+                    setUploadStatus('Lade aktuelle SHA von GitHub...');
+                    let sha='';
+                    try{
+                        const getResp=await fetch('https://api.github.com/repos/'+ghRepo+'/contents/'+ghFile+'?ref='+ghBranch,{
+                            headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github.v3+json'}
+                        });
+                        if(getResp.ok){const info=await getResp.json();sha=info.sha}
+                    }catch(e){}
+                    
+                    setUploadProgress(50);
+                    setUploadStatus('Pushe auf GitHub...');
+                    const content=btoa(unescape(encodeURIComponent(updated)));
+                    const body={message:'v'+ver+': '+(message.trim()||'Update'),content:content,branch:ghBranch};
+                    if(sha)body.sha=sha;
+                    const putResp=await fetch('https://api.github.com/repos/'+ghRepo+'/contents/'+ghFile,{
+                        method:'PUT',
+                        headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json','Accept':'application/vnd.github.v3+json'},
+                        body:JSON.stringify(body)
+                    });
+                    if(!putResp.ok){const err=await putResp.json();throw new Error(err.message||'HTTP '+putResp.status)}
+                    
+                    setUploadState('verifying');setUploadProgress(80);
+                    setUploadStatus('Veröffentliche Versionsinfo...');
+                    const downloadUrl='https://raw.githubusercontent.com/'+ghRepo+'/refs/heads/'+ghBranch+'/'+ghFile;
+                    const vInfo={version:ver,message:message.trim()||'Neue Version',fileName:fName,date:new Date().toISOString(),publishedBy:'Admin',
+                        downloadUrl:downloadUrl,originalUrl:'https://github.com/'+ghRepo+'/blob/'+ghBranch+'/'+ghFile,source:'github'};
+                    await api.saveVersion(vInfo);
+                    
+                    setUploadProgress(100);
+                    setUploadStatus('\u2705 Update v'+ver+' auf GitHub ver\u00f6ffentlicht!');
+                    setUploadState('done');
+                    setUploadResult({fileName:ghFile,size:updated.length,url:vInfo.originalUrl,source:'github'});
+                    setCloudVersion(vInfo);
+                }catch(e){
+                    console.error('GitHub deploy error:',e);
+                    setUploadState('error');
+                    setErrorMsg('GitHub-Fehler: '+e.message+'\n\nAlternativ: Google Drive Fallback nutzen.');
+                }
+            };
+            
+            const saveGHToken=(t)=>{setGithubToken(t);if(t.trim())localStorage.setItem('ccone-github-token',t.trim());else localStorage.removeItem('ccone-github-token')};
+            
             const resetUpload=()=>{
                 setUploadState('idle');
                 setUploadProgress(0);
@@ -2895,8 +2956,9 @@ function getOrCreateSheet(){
                             }
                         </div>
                         <div className="glass-card rounded-xl p-3">
-                            <p className="text-xs text-slate-500 mb-0.5">Google Drive</p>
-                            {cloudVersion?.fileId?<div><p className="text-xs text-emerald-400 font-medium">✅ Verknüpft</p>{cloudVersion.fileSize&&<p className="text-xs text-slate-500">{Math.round(cloudVersion.fileSize/1024)} KB</p>}<a href={cloudVersion.originalUrl||cloudVersion.downloadUrl} target="_blank" className="text-xs text-blue-400 hover:underline">Öffnen →</a></div>:
+                            <p className="text-xs text-slate-500 mb-0.5">{githubToken?'GitHub':'Google Drive'}</p>
+                            {githubToken?<div><p className="text-xs text-emerald-400 font-medium">{'\u2705'} Verbunden</p><p className="text-xs text-slate-500 font-mono">{ghRepo}</p><a href={'https://github.com/'+ghRepo} target="_blank" className="text-xs text-blue-400 hover:underline">{'\u00d6'}ffnen {'\u2192'}</a></div>:
+                                cloudVersion?.fileId?<div><p className="text-xs text-emerald-400 font-medium">{'\u2705'} Verkn{'\u00fc'}pft</p>{cloudVersion.fileSize&&<p className="text-xs text-slate-500">{Math.round(cloudVersion.fileSize/1024)} KB</p>}<a href={cloudVersion.originalUrl||cloudVersion.downloadUrl} target="_blank" className="text-xs text-blue-400 hover:underline">{'\u00d6'}ffnen {'\u2192'}</a></div>:
                                 <p className="text-xs text-slate-500 mt-1">Nicht verbunden</p>
                             }
                         </div>
@@ -2925,6 +2987,19 @@ function getOrCreateSheet(){
                                 <label className="block text-xs text-slate-500 mb-0.5">Nachricht</label>
                                 <input value={message} onChange={(e)=>setMessage(e.target.value)} disabled={isUploading} className="w-full px-2 py-1.5 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs disabled:opacity-50" placeholder="z.B. Neue Features"/>
                             </div>
+                        </div>
+                        
+                        {/* GitHub Token */}
+                        <div className="mb-3 p-2 rounded-lg" style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.06)'}}>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="text-xs text-slate-500 flex items-center gap-1">{'\ud83d\udc19'} GitHub Token</label>
+                                <div className="flex items-center gap-1">
+                                    {githubToken&&<span className="text-xs text-emerald-400">{'\u2705'}</span>}
+                                    <button onClick={()=>setShowGHToken(!showGHToken)} className="text-xs text-slate-500 hover:text-slate-300">{showGHToken?'Verbergen':'Bearbeiten'}</button>
+                                </div>
+                            </div>
+                            {showGHToken&&<input value={githubToken} onChange={(e)=>saveGHToken(e.target.value)} disabled={isUploading} type="password" className="w-full px-2 py-1 rounded border border-slate-600 bg-slate-800/80 text-white text-xs font-mono disabled:opacity-50" placeholder="ghp_xxxxxxxxxxxx"/>}
+                            {!githubToken&&!showGHToken&&<p className="text-xs text-slate-600">Kein Token {'\u2192'} Deploy geht auf Google Drive</p>}
                         </div>
                         
                         {/* URL Info - compact */}
@@ -2965,7 +3040,7 @@ function getOrCreateSheet(){
                                             <span><span className="text-slate-500">Datei:</span> <span className="text-white">{uploadResult.fileName}</span></span>
                                             <span><span className="text-slate-500">Größe:</span> <span className="text-white">{Math.round(uploadResult.size/1024)} KB</span></span>
                                             <span><span className="text-slate-500">Version:</span> <span className="text-emerald-400 font-bold">{newVersion}</span></span>
-                                            {uploadResult.url&&<a href={uploadResult.url} target="_blank" className="text-blue-400 hover:underline">Drive →</a>}
+                                            {uploadResult.url&&<a href={uploadResult.url} target="_blank" className="text-blue-400 hover:underline">{uploadResult.source==='github'?'GitHub':'Drive'} {'\u2192'}</a>}
                                         </div>
                                         <p className="text-xs text-emerald-300 mt-1">✅ Agents sehen das Update beim nächsten Start!</p>
                                     </div>
@@ -2981,19 +3056,30 @@ function getOrCreateSheet(){
                         {/* Buttons */}
                         {uploadState==='idle'?(
                             <div className="space-y-1.5">
-                                <button onClick={deployUpdate} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-white font-bold text-sm" style={{background:'linear-gradient(135deg,#7c3aed,#3b82f6,#10b981)'}}>
-                                    🚀 Update v{newVersion||'?'} generieren & veröffentlichen
-                                </button>
+                                {githubToken?(
+                                    <button onClick={deployToGitHub} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-white font-bold text-sm" style={{background:'linear-gradient(135deg,#6e5494,#333,#24292e)'}}>
+                                        {'\ud83d\udc19'} Update v{newVersion||'?'} auf GitHub pushen
+                                    </button>
+                                ):(
+                                    <button onClick={deployUpdate} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-white font-bold text-sm" style={{background:'linear-gradient(135deg,#7c3aed,#3b82f6,#10b981)'}}>
+                                        {'\ud83d\ude80'} Update v{newVersion||'?'} auf Google Drive
+                                    </button>
+                                )}
                                 <div className="flex gap-1.5">
+                                    {githubToken&&(
+                                        <button onClick={deployUpdate} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-300" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)'}}>
+                                            {'\u2601\ufe0f'} Drive Fallback
+                                        </button>
+                                    )}
                                     <button onClick={generateLocalFile} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-300" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)'}}>
-                                        📦 Lokal herunterladen
+                                        {'\ud83d\udce6'} Lokal herunterladen
                                     </button>
                                     <button onClick={testPreview} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-300" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)'}}>
-                                        👁️ Vorschau
+                                        {'\ud83d\udc41\ufe0f'} Vorschau
                                     </button>
                                     {cloudVersion?.fileId&&(
                                         <button onClick={publishVersionOnly} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs text-amber-400 hover:text-amber-300" style={{background:'rgba(212,175,55,0.06)',border:'1px solid rgba(212,175,55,0.15)'}}>
-                                            📢 Nur Version
+                                            {'\ud83d\udce2'} Nur Version
                                         </button>
                                     )}
                                 </div>
@@ -3023,9 +3109,9 @@ function getOrCreateSheet(){
                         <summary className="p-3 cursor-pointer text-sm font-bold text-white hover:bg-white/5 rounded-xl">📋 So funktioniert's</summary>
                         <div className="px-3 pb-3 space-y-2 text-xs text-slate-400">
                             <div className="flex gap-2 items-start"><span className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold flex-shrink-0">1</span><p>Versionsnummer und Nachricht eingeben</p></div>
-                            <div className="flex gap-2 items-start"><span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold flex-shrink-0">2</span><p>Klick auf den großen Button — alles läuft automatisch</p></div>
-                            <div className="flex gap-2 items-start"><span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs font-bold flex-shrink-0">3</span><p>Datei wird auf Google Drive hochgeladen (gleicher Link, alte ersetzt)</p></div>
-                            <p className="text-xs text-slate-500 pt-1" style={{borderTop:'1px solid rgba(255,255,255,0.04)'}}>💡 Agents sehen beim Start "Update verfügbar!" + Download-Button. Datei heißt immer <strong className="text-slate-300">{fileName||'ccone-portal.html'}</strong>.</p>
+                            <div className="flex gap-2 items-start"><span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold flex-shrink-0">2</span><p>GitHub Token hinterlegen (einmalig) — oder Google Drive als Fallback</p></div>
+                            <div className="flex gap-2 items-start"><span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs font-bold flex-shrink-0">3</span><p>Klick auf den Button — Datei wird auf GitHub gepusht (oder Google Drive)</p></div>
+                            <p className="text-xs text-slate-500 pt-1" style={{borderTop:'1px solid rgba(255,255,255,0.04)'}}>{'💡'} Agents sehen beim Start "Update verfügbar!" + Download-Button. Datei heißt immer <strong className="text-slate-300">{fileName||'ccone-portal.html'}</strong>.</p>
                         </div>
                     </details>
                     <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -12229,13 +12315,14 @@ Regeln:
 </main></div></div>)}
 
         ReactDOM.render(<App/>,document.getElementById('root'));
+    
     </script>
     <script>
-    // Capture ORIGINAL source BEFORE Babel processes and removes it
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
         // 🎨 DARK MODE FIX - Macht ALLES dunkel!
         function applyDarkMode() {
             // 🔥 SUPER AGGRESSIVE DARK MODE - ÜBERSCHREIBT ALLES!
@@ -12317,6 +12404,7 @@ Regeln:
             attributes: true,
             attributeFilter: ['class']
         });
+    
     </script>
 </body>
 </html>
