@@ -197,7 +197,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.6.9';
+        const APP_VERSION = '5.7.0';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -6263,35 +6263,48 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
             );
         }
 
-        function MatchCard({m,mi,ri,tid,done,isAdmin,onConfirm,onReset}){
+        function MatchCard({m,mi,ri,tid,done,isAdmin,onConfirm,onReset,onReplace,availablePlayers,swapMode,swapSel,onSwapClick}){
             const[s1,setS1]=useState(m.score1!==null?String(m.score1):'');
             const[s2,setS2]=useState(m.score2!==null?String(m.score2):'');
             const[editing,setEditing]=useState(false);
+            const input1Ref=useRef(null);
             useEffect(()=>{setS1(m.score1!==null?String(m.score1):'');setS2(m.score2!==null?String(m.score2):'');},[m.score1,m.score2]);
+            useEffect(()=>{if(editing||(!done&&m.p1&&m.p2&&!m.p1.isBye&&!m.p2.isBye)){setTimeout(()=>{if(input1Ref.current)input1Ref.current.focus()},100)}},[editing,done]);
             const canConfirm=s1!==''&&s2!==''&&s1!==s2;
             const handleConfirm=()=>{onConfirm(tid,ri,mi,+s1,+s2);setEditing(false)};
+            const showInputs=isAdmin&&(!done||editing);
+            const hasBye=m.p1?.isBye||m.p2?.isBye;
             return(
-            <div className="rounded-xl overflow-hidden" style={{border:'1.5px solid '+(done?'rgba(16,185,129,0.3)':'rgba(255,255,255,0.08)'),background:done?'rgba(16,185,129,0.04)':'rgba(255,255,255,0.02)'}}>
-                {[{p:m.p1,s:m.score1,localS:s1,setS:setS1,num:1,isW:m.winner===m.p1?.id},{p:m.p2,s:m.score2,localS:s2,setS:setS2,num:2,isW:m.winner===m.p2?.id}].map((x,pi)=>(
+            <div className="rounded-xl overflow-hidden" onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} style={{border:'1.5px solid '+(done&&!hasBye?'rgba(16,185,129,0.3)':hasBye?'rgba(100,116,139,0.2)':'rgba(255,255,255,0.08)'),background:done&&!hasBye?'rgba(16,185,129,0.04)':hasBye?'rgba(100,116,139,0.03)':'rgba(255,255,255,0.02)'}}>
+                {[{p:m.p1,s:m.score1,localS:s1,setS:setS1,num:1,slot:'p1',isW:m.winner===m.p1?.id,inputRef:input1Ref},{p:m.p2,s:m.score2,localS:s2,setS:setS2,num:2,slot:'p2',isW:m.winner===m.p2?.id,inputRef:null}].map((x,pi)=>(
                     <div key={pi} className="flex items-center justify-between px-3 py-2.5" style={{background:x.isW?'rgba(212,175,55,0.08)':'transparent',borderBottom:pi===0?'1px solid rgba(255,255,255,0.06)':'none'}}>
                         <div className="flex items-center gap-2 min-w-0 flex-1">
-                            {x.isW&&<span style={{fontSize:12}}>{'👑'}</span>}
-                            <span className="text-sm font-medium truncate" style={{color:x.p?x.isW?'#d4af37':x.p.isBye?'#555':'#fff':'#333'}}>{x.p?.name||'\u2014'}</span>
+                            {x.isW&&!x.p?.isBye&&<span style={{fontSize:12}}>{'\ud83d\udc51'}</span>}
+                            {swapMode&&x.p?(
+                                <button onClick={e=>{e.stopPropagation();if(onSwapClick)onSwapClick(x.slot)}} className="flex-1 px-2 py-0.5 rounded text-sm font-medium truncate text-left" style={{background:swapSel&&swapSel.ri===ri&&swapSel.mi===mi&&swapSel.slot===x.slot?'rgba(59,130,246,0.25)':'rgba(59,130,246,0.08)',border:'1.5px solid '+(swapSel&&swapSel.ri===ri&&swapSel.mi===mi&&swapSel.slot===x.slot?'rgba(59,130,246,0.6)':'rgba(59,130,246,0.2)'),color:x.p.isBye?'#64748b':'#60a5fa',cursor:'pointer'}}>{x.p.isBye?'Freilos':x.p.name}</button>
+                            ):x.p?.isBye&&isAdmin&&onReplace?(
+                                <select value="bye" onChange={e=>{if(e.target.value==='bye')return;const u=availablePlayers?.find(p=>p.id===e.target.value);if(u)onReplace(tid,ri,mi,x.slot,{id:u.id,name:u.name})}} onClick={e=>e.stopPropagation()} className="flex-1 px-1 py-0.5 rounded border border-amber-600/40 bg-amber-900/20 text-amber-300 text-xs font-medium cursor-pointer" style={{minWidth:0}}>
+                                    <option value="bye" style={{background:'#1e293b',color:'#fbbf24'}}>{'\u23f3'} Freilos (ersetzen...)</option>
+                                    {(availablePlayers||[]).map(u=><option key={u.id} value={u.id} style={{background:'#1e293b',color:'#e2e8f0'}}>{u.name}</option>)}
+                                </select>
+                            ):(
+                                <span className="text-sm font-medium truncate" style={{color:x.p?x.isW?'#d4af37':x.p?.isBye?'#555':'#fff':'#333'}}>{x.p?.name||'\u2014'}</span>
+                            )}
                         </div>
-                        {x.p&&!x.p.isBye&&isAdmin&&(!done||editing)?(
-                            <input type="number" min="0" value={x.localS} onChange={e=>x.setS(e.target.value)} className="w-20 px-2 py-1 rounded border border-slate-600 bg-slate-800/80 text-white text-center text-sm font-bold focus:border-amber-500 focus:outline-none" placeholder="Pkt"/>
+                        {x.p&&!x.p.isBye&&showInputs?(
+                            <input ref={x.inputRef} type="number" min="0" value={x.localS} onFocus={e=>e.target.select()} onChange={e=>x.setS(e.target.value)} onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} className="w-20 px-2 py-1 rounded border border-slate-600 bg-slate-800/80 text-white text-center text-sm font-bold focus:border-amber-500 focus:outline-none" placeholder="Pkt" style={{WebkitAppearance:'none',MozAppearance:'textfield'}}/>
                         ):(
-                            <span className="text-sm font-bold min-w-[3rem] text-right" style={{color:x.isW?'#d4af37':x.s!==null?'#fff':'#555'}}>{x.s!==null?x.s.toLocaleString():x.p?.isBye?'\u2014':''}</span>
+                            <span className="text-sm font-bold min-w-[3rem] text-right" style={{color:x.isW?'#d4af37':x.s!==null&&!x.p?.isBye?'#fff':'#555'}}>{x.p?.isBye?'':x.s!==null?x.s.toLocaleString():''}</span>
                         )}
                     </div>
                 ))}
                 {isAdmin&&m.p1&&m.p2&&!m.p1.isBye&&!m.p2.isBye&&(
                     <div className="flex gap-1 px-2 py-1.5" style={{background:'rgba(0,0,0,0.15)',borderTop:'1px solid rgba(255,255,255,0.04)'}}>
-                        {!done&&canConfirm&&<button onClick={handleConfirm} className="flex-1 py-1 rounded text-xs font-bold" style={{background:'rgba(16,185,129,0.2)',color:'#6ee7b7',border:'1px solid rgba(16,185,129,0.3)'}}>{'✓'} Best{'\u00e4'}tigen</button>}
+                        {!done&&canConfirm&&<button onClick={handleConfirm} className="flex-1 py-1 rounded text-xs font-bold" style={{background:'rgba(16,185,129,0.2)',color:'#6ee7b7',border:'1px solid rgba(16,185,129,0.3)'}}>{'\u2713'} Best{'\u00e4'}tigen</button>}
                         {!done&&s1===s2&&s1!==''&&<span className="flex-1 py-1 text-center text-xs text-amber-400">Unentschieden nicht erlaubt</span>}
-                        {done&&!editing&&<button onClick={()=>setEditing(true)} className="flex-1 py-1 rounded text-xs" style={{background:'rgba(255,255,255,0.04)',color:'#94a3b8'}}>{'✏️'} Bearbeiten</button>}
-                        {done&&!editing&&<button onClick={()=>onReset(tid,ri,mi)} className="flex-1 py-1 rounded text-xs" style={{background:'rgba(239,68,68,0.1)',color:'#fca5a5'}}>{'↩'} Zur{'\u00fc'}cksetzen</button>}
-                        {editing&&canConfirm&&<button onClick={handleConfirm} className="flex-1 py-1 rounded text-xs font-bold" style={{background:'rgba(16,185,129,0.2)',color:'#6ee7b7',border:'1px solid rgba(16,185,129,0.3)'}}>{'✓'} Speichern</button>}
+                        {done&&!editing&&<button onClick={e=>{e.stopPropagation();setEditing(true)}} className="flex-1 py-1 rounded text-xs" style={{background:'rgba(255,255,255,0.04)',color:'#94a3b8'}}>{'\u270f\ufe0f'} Bearbeiten</button>}
+                        {done&&!editing&&<button onClick={e=>{e.stopPropagation();onReset(tid,ri,mi)}} className="flex-1 py-1 rounded text-xs" style={{background:'rgba(239,68,68,0.1)',color:'#fca5a5'}}>{'\u21a9'} Zur{'\u00fc'}cksetzen</button>}
+                        {editing&&canConfirm&&<button onClick={handleConfirm} className="flex-1 py-1 rounded text-xs font-bold" style={{background:'rgba(16,185,129,0.2)',color:'#6ee7b7',border:'1px solid rgba(16,185,129,0.3)'}}>{'\u2713'} Speichern</button>}
                         {editing&&<button onClick={()=>{setEditing(false);setS1(m.score1!==null?String(m.score1):'');setS2(m.score2!==null?String(m.score2):'')}} className="flex-1 py-1 rounded text-xs" style={{background:'rgba(255,255,255,0.04)',color:'#94a3b8'}}>Abbrechen</button>}
                     </div>
                 )}
@@ -6307,6 +6320,8 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
             const[newPhrase,setNewPhrase]=useState('');
             const[tournamentTitle,setTournamentTitle]=useState('');
             const[roundWheels,setRoundWheels]=useState({});
+            const[bracketSlots,setBracketSlots]=useState(null);
+            const[swapSelect,setSwapSelect]=useState(null);
 
             // All wheels (regular + tournament-only)
             const allWheels=(appData.quizzes||[]).filter(q=>q.type==='wheel'&&(q.wheelSegments||[]).length>0);
@@ -6330,14 +6345,11 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                 showNotification('Gelöscht');
             };
 
-            // Bracket builder
-            const buildBracket=(agents)=>{
-                const shuffled=[...agents].sort(()=>Math.random()-0.5);
-                let size=2;while(size<shuffled.length)size*=2;
-                const padded=[...shuffled];while(padded.length<size)padded.push({id:'bye_'+padded.length,name:'Freilos',isBye:true});
+            // Bracket builder — takes ordered slots array (agents + byes)
+            const buildBracketFromSlots=(slots)=>{
                 const rounds=[];let currentMatches=[];
-                for(let i=0;i<padded.length;i+=2){
-                    currentMatches.push({id:'m_'+Date.now()+'_'+i,p1:padded[i],p2:padded[i+1],score1:null,score2:null,winner:null});
+                for(let i=0;i<slots.length;i+=2){
+                    currentMatches.push({id:'m_'+Date.now()+'_'+i,p1:slots[i],p2:slots[i+1],score1:null,score2:null,winner:null});
                 }
                 currentMatches=currentMatches.map(m=>{
                     if(m.p1.isBye)return{...m,score1:0,score2:0,winner:m.p2.id};
@@ -6349,19 +6361,61 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                 while(mc>1){mc=mc/2;const nr=[];for(let i=0;i<mc;i++)nr.push({id:'m_'+Date.now()+'_r'+rounds.length+'_'+i,p1:null,p2:null,score1:null,score2:null,winner:null});rounds.push(nr)}
                 return rounds;
             };
-            const getRoundName=(tot,ri)=>{const fe=tot-1-ri;return fe===0?'🏆 Finale':fe===1?'Halbfinale':fe===2?'Viertelfinale':fe===3?'Achtelfinale':'Runde '+(ri+1)};
+            const getRoundName=(tot,ri)=>{const fe=tot-1-ri;return fe===0?'\ud83c\udfc6 Finale':fe===1?'Halbfinale':fe===2?'Viertelfinale':fe===3?'Achtelfinale':'Runde '+(ri+1)};
 
-            const createTournament=()=>{
+            // Step 1: Open bracket preview
+            const prepareBracket=()=>{
                 if(selAgents.length<2){showNotification('Mindestens 2 Teilnehmer!','error');return}
                 const hasAnyWheel=Object.values(roundWheels).some(v=>v);
                 if(!hasAnyWheel){showNotification('Mindestens ein Rad zuweisen!','error');return}
                 const agents=selAgents.map(id=>{const u=allUsers.find(x=>x.id===id);return{id,name:u?.name||'?'}});
-                const bracket=buildBracket(agents);
-                // Default wheel = first assigned
+                let size=2;while(size<agents.length)size*=2;
+                const slots=[...agents];
+                while(slots.length<size)slots.push({id:'bye_'+slots.length,name:'Freilos',isBye:true});
+                setBracketSlots(slots);setSwapSelect(null);
+            };
+            const shuffleSlots=()=>{
+                if(!bracketSlots)return;
+                const real=bracketSlots.filter(s=>!s.isBye);
+                const byes=bracketSlots.filter(s=>s.isBye);
+                const shuffled=[...real].sort(()=>Math.random()-0.5);
+                // Distribute byes evenly: place byes at every other position from end
+                const result=new Array(bracketSlots.length).fill(null);
+                const byePositions=[];
+                const step=Math.floor(bracketSlots.length/Math.max(byes.length,1));
+                for(let i=0;i<byes.length;i++){
+                    const pos=Math.min(bracketSlots.length-1-i*step,bracketSlots.length-1);
+                    byePositions.push(pos%2===0?pos:pos-1);
+                }
+                const usedPos=new Set();
+                byes.forEach((b,i)=>{let p=byePositions[i]||bracketSlots.length-2-i*2;while(usedPos.has(p))p=(p+2)%bracketSlots.length;usedPos.add(p);result[p]=b});
+                let si=0;
+                for(let i=0;i<result.length;i++){if(!result[i])result[i]=shuffled[si++]}
+                setBracketSlots(result);setSwapSelect(null);
+            };
+            const swapSlot=(idx)=>{
+                if(swapSelect===null){setSwapSelect(idx);return}
+                if(swapSelect===idx){setSwapSelect(null);return}
+                const ns=[...bracketSlots];
+                [ns[swapSelect],ns[idx]]=[ns[idx],ns[swapSelect]];
+                setBracketSlots(ns);setSwapSelect(null);
+            };
+            const replaceSlot=(idx,agentId)=>{
+                const ns=[...bracketSlots];
+                if(agentId==='bye'){ns[idx]={id:'bye_'+idx,name:'Freilos',isBye:true}}
+                else{const u=allUsers.find(x=>x.id===agentId);if(u)ns[idx]={id:u.id,name:u.name}}
+                setBracketSlots(ns);
+            };
+
+            // Step 2: Confirm and create
+            const createTournament=()=>{
+                if(!bracketSlots){showNotification('Bitte zuerst Bracket anordnen','error');return}
+                const bracket=buildBracketFromSlots(bracketSlots);
                 const defaultWheel=Object.values(roundWheels).find(v=>v)||'';
-                const t={id:Date.now().toString(),title:tournamentTitle||'Glücksrad-Turnier',quizId:defaultWheel,roundWheels:{...roundWheels},status:'active',participants:agents,bracket,createdAt:new Date().toISOString()};
+                const agents=bracketSlots.filter(s=>!s.isBye);
+                const t={id:Date.now().toString(),title:tournamentTitle||'Gl\u00fccksrad-Turnier',quizId:defaultWheel,roundWheels:{...roundWheels},status:'active',participants:bracketSlots,bracket,createdAt:new Date().toISOString()};
                 updateData({...appData,wheelTournaments:[...tournaments,t]});
-                setShowCreate(false);setSelAgents([]);setTournamentTitle('');setRoundWheels({});
+                setShowCreate(false);setSelAgents([]);setTournamentTitle('');setRoundWheels({});setBracketSlots(null);
                 showNotification('Turnier erstellt mit '+agents.length+' Teilnehmern!');
             };
 
@@ -6439,6 +6493,38 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
 
             const deleteTournament=(id)=>{if(!confirm('Turnier löschen?'))return;updateData({...appData,wheelTournaments:tournaments.filter(t=>t.id!==id)});if(viewTournament?.id===id)setViewTournament(null);showNotification('Gelöscht')};
 
+            // Replace a bye (or any player) in a live tournament match
+            const replacePlayer=(tid,ri,mi,slot,newPlayer)=>{
+                const tList=tournaments.map(t=>{
+                    if(t.id!==tid)return t;
+                    const bracket=t.bracket.map(r=>r.map(m=>({...m})));
+                    const match=bracket[ri][mi];
+                    const oldPlayer=match[slot];
+                    match[slot]=newPlayer;
+                    // If was a bye-win, reset the match so it can be played
+                    if(oldPlayer?.isBye&&match.winner===oldPlayer?.id){
+                        // Shouldn't happen — bye never wins
+                    }
+                    if(oldPlayer?.isBye||newPlayer.isBye){
+                        // Recalculate: if one side is bye, auto-win for the other
+                        if(match.p1?.isBye&&match.p2&&!match.p2.isBye){
+                            match.score1=0;match.score2=0;match.winner=match.p2.id;
+                        }else if(match.p2?.isBye&&match.p1&&!match.p1.isBye){
+                            match.score1=0;match.score2=0;match.winner=match.p1.id;
+                        }else if(!match.p1?.isBye&&!match.p2?.isBye){
+                            // Both real players now — reset scores so they can play
+                            match.score1=null;match.score2=null;match.winner=null;
+                        }
+                    }
+                    const updated={...t,bracket:advanceBracket(bracket),participants:[...t.participants.filter(p=>p.id!==newPlayer.id),newPlayer]};
+                    const fm=updated.bracket[updated.bracket.length-1][0];
+                    if(fm.winner)updated.status='finished';else updated.status='active';
+                    return updated;
+                });
+                updateData({...appData,wheelTournaments:tList});
+                showNotification(newPlayer.isBye?'Freilos gesetzt':newPlayer.name+' eingesetzt!');
+            };
+
             // === WHEEL EDITOR - use full WheelEditor with KI ===
             if(editWheel){
                 const wh=(appData.quizzes||[]).find(q=>q.id===editWheel.id)||editWheel;
@@ -6447,6 +6533,33 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
 
             // === TOURNAMENT DETAIL VIEW ===
             const tv=viewTournament?tournaments.find(t=>t.id===viewTournament.id):null;
+            const[bracketSwapMode,setBracketSwapMode]=useState(false);
+            const[bracketSwapSel,setBracketSwapSel]=useState(null); // {ri,mi,slot}
+            
+            const swapBracketPlayers=(tid,sel1,sel2)=>{
+                const tList=tournaments.map(t=>{
+                    if(t.id!==tid)return t;
+                    const bracket=t.bracket.map(r=>r.map(m=>({...m})));
+                    const m1=bracket[sel1.ri][sel1.mi];
+                    const m2=bracket[sel2.ri][sel2.mi];
+                    const p1=m1[sel1.slot];
+                    const p2=m2[sel2.slot];
+                    m1[sel1.slot]=p2;m2[sel2.slot]=p1;
+                    // Recalculate bye wins for affected matches
+                    [m1,m2].forEach(m=>{
+                        if(m.p1?.isBye&&m.p2&&!m.p2.isBye){m.score1=0;m.score2=0;m.winner=m.p2.id}
+                        else if(m.p2?.isBye&&m.p1&&!m.p1.isBye){m.score1=0;m.score2=0;m.winner=m.p1.id}
+                        else if(m.p1?.isBye&&m.p2?.isBye){m.score1=0;m.score2=0;m.winner=null}
+                        else if(!m.p1?.isBye&&!m.p2?.isBye&&(m.score1===0&&m.score2===0&&m.winner)){
+                            m.score1=null;m.score2=null;m.winner=null;
+                        }
+                    });
+                    return{...t,bracket:advanceBracket(bracket)};
+                });
+                updateData({...appData,wheelTournaments:tList});
+                setBracketSwapSel(null);
+                showNotification('Spieler getauscht!');
+            };
             if(tv){
                 const finalMatch=tv.bracket[tv.bracket.length-1][0];
                 const champion=finalMatch.winner?(finalMatch.p1?.id===finalMatch.winner?finalMatch.p1:finalMatch.p2):null;
@@ -6459,8 +6572,16 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                             <div><h2 className="text-xl font-bold text-white">🏆 {tv.title}</h2><p className="text-xs text-slate-500">{tv.participants.filter(p=>!p.isBye).length} Teilnehmer • {tv.status==='finished'?'Beendet':'Aktiv'}</p></div>
                         </div>
                         {champion&&<div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{background:'linear-gradient(135deg,rgba(212,175,55,0.2),rgba(184,134,11,0.2))',border:'1.5px solid rgba(212,175,55,0.4)'}}><span style={{fontSize:20}}>🏆</span><span className="font-bold" style={{color:'#d4af37'}}>{champion.name}</span></div>}
+                        {isAdmin&&!champion&&<button onClick={()=>{setBracketSwapMode(!bracketSwapMode);setBracketSwapSel(null)}} className="px-3 py-1.5 rounded-xl text-xs font-bold" style={{background:bracketSwapMode?'rgba(59,130,246,0.2)':'rgba(255,255,255,0.05)',border:'1.5px solid '+(bracketSwapMode?'rgba(59,130,246,0.5)':'rgba(255,255,255,0.1)'),color:bracketSwapMode?'#60a5fa':'#94a3b8'}}>{bracketSwapMode?'\u2713 Fertig':'\u21c4 Reihenfolge \u00e4ndern'}</button>}
                     </div>
                     {/* Bracket */}
+                    {bracketSwapMode&&(
+                        <div className="mb-3 p-2.5 rounded-xl flex items-center gap-2" style={{background:'rgba(59,130,246,0.08)',border:'1px solid rgba(59,130,246,0.2)'}}>
+                            <span style={{fontSize:14}}>{'\u21c4'}</span>
+                            <span className="text-xs text-blue-300 font-medium">{bracketSwapSel?'Jetzt zweiten Spieler anklicken zum Tauschen':'Klicke einen Spieler an um ihn zu verschieben'}</span>
+                            {bracketSwapSel&&<button onClick={()=>setBracketSwapSel(null)} className="ml-auto px-2 py-0.5 rounded text-xs" style={{background:'rgba(255,255,255,0.05)',color:'#94a3b8'}}>Abbrechen</button>}
+                        </div>
+                    )}
                     <div className="overflow-x-auto pb-4">
                         <div style={{display:'flex',gap:24,minWidth:tv.bracket.length*280}}>
                             {tv.bracket.map((round,ri)=>{
@@ -6474,7 +6595,12 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                                     </div>
                                     {round.map((m,mi)=>{
                                         const done=m.winner!==null;
-                                        return(<MatchCard key={mi} m={m} mi={mi} ri={ri} tid={tv.id} done={done} isAdmin={isAdmin} onConfirm={confirmMatch} onReset={resetMatch}/>);
+                                        const usedIds=new Set();tv.bracket.forEach(r=>r.forEach(m=>{if(m.p1&&!m.p1.isBye)usedIds.add(m.p1.id);if(m.p2&&!m.p2.isBye)usedIds.add(m.p2.id)}));
+                                        const avail=allUsers.filter(u=>!usedIds.has(u.id));
+                                        return(<MatchCard key={mi} m={m} mi={mi} ri={ri} tid={tv.id} done={done} isAdmin={isAdmin} onConfirm={confirmMatch} onReset={resetMatch} onReplace={replacePlayer} availablePlayers={avail} swapMode={bracketSwapMode} swapSel={bracketSwapSel} onSwapClick={(slot)=>{
+                                            if(!bracketSwapSel){setBracketSwapSel({ri,mi,slot})}
+                                            else{swapBracketPlayers(tv.id,bracketSwapSel,{ri,mi,slot});setBracketSwapMode(false)}
+                                        }}/>);
                                     })}
                                 </div>);
                             })}
@@ -6509,7 +6635,7 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                     <div><h2 className="text-xl font-bold text-white">🏆 Glücksrad-Turnier</h2><p className="text-xs text-slate-500">{tournaments.length} Turniere • {tournamentWheels.length} Turnier-Räder</p></div>
                     {isAdmin&&<div className="flex gap-2">
                         <button onClick={()=>setShowWheelEditor(!showWheelEditor)} className="px-3 py-2 rounded-xl font-bold text-sm" style={{background:'rgba(249,115,22,0.15)',border:'1.5px solid rgba(249,115,22,0.4)',color:'#fb923c'}}>🎡 Räder verwalten</button>
-                        <button onClick={()=>setShowCreate(!showCreate)} className="px-3 py-2 rounded-xl font-bold text-sm" style={{background:'linear-gradient(135deg,rgba(212,175,55,0.3),rgba(184,134,11,0.3))',border:'1.5px solid rgba(212,175,55,0.5)',color:'#d4af37'}}>+ Neues Turnier</button>
+                        <button onClick={()=>{setShowCreate(!showCreate);if(showCreate){setBracketSlots(null);setSwapSelect(null)}}} className="px-3 py-2 rounded-xl font-bold text-sm" style={{background:'linear-gradient(135deg,rgba(212,175,55,0.3),rgba(184,134,11,0.3))',border:'1.5px solid rgba(212,175,55,0.5)',color:'#d4af37'}}>+ Neues Turnier</button>
                     </div>}
                 </div>
 
@@ -6583,7 +6709,41 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                                     <p className="text-xs text-slate-500 mt-1">Nicht zugewiesene Runden nutzen das Rad der vorherigen Runde</p>
                                 </div>
                             )}
-                            <button onClick={createTournament} className="w-full py-2.5 rounded-xl font-bold text-sm" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#000'}}>🏆 Turnier starten ({selAgents.length} Spieler)</button>
+                            <button onClick={prepareBracket} className="w-full py-2.5 rounded-xl font-bold text-sm" style={{background:bracketSlots?'rgba(212,175,55,0.2)':'linear-gradient(135deg,#d4af37,#b8860b)',color:bracketSlots?'#d4af37':'#000',border:bracketSlots?'1.5px solid rgba(212,175,55,0.4)':'none'}}>{bracketSlots?'\ud83d\udd04 Bracket neu generieren':'\ud83c\udfc6 Bracket anordnen'} ({selAgents.length} Spieler)</button>
+                            {bracketSlots&&(
+                                <div className="mt-3 p-3 rounded-xl" style={{background:'rgba(212,175,55,0.04)',border:'1px solid rgba(212,175,55,0.15)'}}>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="text-sm font-bold" style={{color:'#d4af37'}}>Bracket-Anordnung</h4>
+                                        <button onClick={shuffleSlots} className="px-2 py-1 rounded text-xs font-medium" style={{background:'rgba(212,175,55,0.15)',color:'#d4af37',border:'1px solid rgba(212,175,55,0.3)'}}>{'🎲'} Zuf{'\u00e4'}llig mischen</button>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-2">Klicke zwei Spieler um sie zu tauschen. Oder {'\u00e4'}ndere einen Slot per Dropdown.</p>
+                                    <div className="space-y-1">
+                                        {Array.from({length:bracketSlots.length/2},(_,mi)=>{
+                                            const i1=mi*2;const i2=mi*2+1;
+                                            const s1=bracketSlots[i1];const s2=bracketSlots[i2];
+                                            const usedIds=bracketSlots.filter(s=>!s.isBye).map(s=>s.id);
+                                            return(
+                                            <div key={mi} className="flex items-center gap-2 p-2 rounded-lg" style={{background:'rgba(0,0,0,0.2)',border:'1px solid rgba(255,255,255,0.04)'}}>
+                                                <span className="text-xs text-slate-500 w-6 text-center font-bold">{mi+1}</span>
+                                                {[{s:s1,idx:i1},{s:s2,idx:i2}].map((x,si)=>(
+                                                    <React.Fragment key={si}>
+                                                        {si===1&&<span className="text-xs font-bold" style={{color:'#d4af37'}}>vs</span>}
+                                                        <div className="flex-1 flex items-center gap-1">
+                                                            <button onClick={()=>swapSlot(x.idx)} className="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium text-left truncate" style={{background:swapSelect===x.idx?'rgba(59,130,246,0.2)':x.s.isBye?'rgba(100,116,139,0.1)':'rgba(255,255,255,0.05)',border:'1.5px solid '+(swapSelect===x.idx?'rgba(59,130,246,0.5)':x.s.isBye?'rgba(100,116,139,0.2)':'rgba(255,255,255,0.08)'),color:swapSelect===x.idx?'#60a5fa':x.s.isBye?'#64748b':'#fff'}}>{x.s.isBye?'Freilos':x.s.name}</button>
+                                                            <select value={x.s.id} onChange={e=>replaceSlot(x.idx,e.target.value)} className="w-8 px-0 py-1 rounded border border-slate-700 bg-slate-800 text-white text-xs" style={{opacity:0.5,cursor:'pointer'}} title="Ersetzen">
+                                                                <option value={x.s.id}>{'\u2026'}</option>
+                                                                <option value="bye">Freilos</option>
+                                                                {allUsers.filter(u=>!usedIds.includes(u.id)||u.id===x.s.id).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                                                            </select>
+                                                        </div>
+                                                    </React.Fragment>
+                                                ))}
+                                            </div>);
+                                        })}
+                                    </div>
+                                    <button onClick={createTournament} className="w-full mt-3 py-2.5 rounded-xl font-bold text-sm" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#000'}}>{'\ud83c\udfc6'} Turnier starten!</button>
+                                </div>
+                            )}
                         </div>
                     </div>);
                 })()}
