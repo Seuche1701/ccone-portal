@@ -197,7 +197,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.6.8';
+        const APP_VERSION = '5.6.9';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -959,6 +959,8 @@ function getOrCreateSheet(){
             const[view,setView]=useState('loading');
             const[upgrading,setUpgrading]=useState(false);
             const[updateAvailable,setUpdateAvailable]=useState(null);
+            const[forceUpdateInfo,setForceUpdateInfo]=useState(null);
+            const[forceCountdownText,setForceCountdownText]=useState('');
             const[notification,setNotification]=useState(null);
             const[loading,setLoading]=useState(false);
             const[scriptUrl,setScriptUrl]=useState(GOOGLE_SCRIPT_URL);
@@ -988,11 +990,42 @@ function getOrCreateSheet(){
                         if(cv&&cv.version&&cv.version!==APP_VERSION&&!cv.paused){
                             setUpdateAvailable(cv);
                         }
+                        if(cv&&cv.forceUpdate&&cv.forceUpdate.active){
+                            setForceUpdateInfo(cv.forceUpdate);
+                        }
                     }catch(e){}
                 }catch(e){console.error(e);showNotification('Verbindungsfehler','error');setView('setup')}
                 finally{setLoading(false)}
             };
 
+            // Force Update: poll every 30s + countdown + auto-reload
+            useEffect(()=>{
+                if(!forceUpdateInfo||!forceUpdateInfo.active)return;
+                const tick=()=>{
+                    const diff=new Date(forceUpdateInfo.time)-new Date();
+                    if(diff<=0){window.location.reload();return}
+                    const h=Math.floor(diff/3600000);const m=Math.floor((diff%3600000)/60000);const s=Math.floor((diff%60000)/1000);
+                    setForceCountdownText(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'));
+                };
+                tick();
+                const iv=setInterval(tick,1000);
+                return()=>clearInterval(iv);
+            },[forceUpdateInfo]);
+            useEffect(()=>{
+                const poll=async()=>{
+                    try{
+                        const cv=await api.getVersion();
+                        if(cv&&cv.forceUpdate&&cv.forceUpdate.active){
+                            setForceUpdateInfo(cv.forceUpdate);
+                        }else if(forceUpdateInfo){
+                            setForceUpdateInfo(null);setForceCountdownText('');
+                        }
+                    }catch(e){}
+                };
+                const iv=setInterval(poll,30000);
+                return()=>clearInterval(iv);
+            },[]);
+            
             const showNotification=(message,type='success')=>{setNotification({message,type});setTimeout(()=>setNotification(null),3000)};
             const saveScriptUrl=()=>{if(!scriptUrl.includes('script.google.com')){showNotification('Ungültige URL','error');return}localStorage.setItem('ccone-script-url',scriptUrl);window.location.reload()};
             const updateData=async(newData,skipSave)=>{
@@ -1027,6 +1060,14 @@ function getOrCreateSheet(){
                         setUpgrading(false);
                     }}/>}
                     {updateAvailable&&view==='login'&&!upgrading&&<UpdateAvailableScreen versionInfo={updateAvailable} onContinue={()=>setUpdateAvailable(null)}/>}
+                    {forceUpdateInfo&&forceUpdateInfo.active&&forceCountdownText&&view!=='setup'&&(
+                        <div style={{position:'fixed',top:0,left:0,right:0,zIndex:9999,background:'linear-gradient(135deg,#991b1b,#7f1d1d)',padding:'8px 16px',display:'flex',alignItems:'center',justifyContent:'center',gap:12,boxShadow:'0 4px 20px rgba(239,68,68,0.4)',animation:'pulse 2s infinite'}}>
+                            <span style={{fontSize:18}}>{'\u26a1'}</span>
+                            <span style={{color:'#fca5a5',fontSize:13,fontWeight:600}}>Zwangsupdate geplant</span>
+                            <span style={{color:'#fff',fontSize:18,fontWeight:900,fontFamily:'monospace',letterSpacing:3,minWidth:80,textAlign:'center'}}>{forceCountdownText}</span>
+                            <span style={{color:'#fca5a5',fontSize:11}}>App wird automatisch neu gestartet</span>
+                        </div>
+                    )}
                     {notification&&<div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-xl shadow-lg animate-fade-in ${notification.type==='error'?'bg-red-900/300':'bg-emerald-500'} text-white font-medium`}>{notification.message}</div>}
                     {loading&&<div className="fixed inset-0 bg-black/20 flex items-center justify-center z-40"><div className="bg-white rounded-xl p-4 shadow-lg flex items-center gap-3"><div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"/><span>Lade...</span></div></div>}
                     {view==='loading'&&<div className="min-h-screen bg-black flex items-center justify-center relative overflow-hidden"><div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="w-[700px] h-[700px] rounded-full bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-400 blur-3xl animate-gradient-pulse" style={{opacity:0.25}}></div></div><div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="w-[500px] h-[500px] rounded-full bg-gradient-to-tr from-cyan-400 via-emerald-500 to-teal-400 blur-3xl animate-gradient-pulse-2" style={{opacity:0.2}}></div></div><div className="text-white text-center relative z-10"><div className="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-4"/><p>Verbinde...</p></div></div>}
@@ -2586,6 +2627,9 @@ function getOrCreateSheet(){
             const[showGHToken,setShowGHToken]=useState(false);
             const[ghTokenVisible,setGhTokenVisible]=useState(false);
             const[updatesPaused,setUpdatesPaused]=useState(false);
+            const[forceTime,setForceTime]=useState('');
+            const[forceActive,setForceActive]=useState(false);
+            const[forceCountdown,setForceCountdown]=useState('');
             const ghRepo='Seuche1701/ccone-portal';
             const ghFile='ccone-portal.html';
             const ghBranch='main';
@@ -2601,6 +2645,9 @@ function getOrCreateSheet(){
                         setNewVersion(v.version);
                         setFileName(v.fileName||'ccone-portal.html');
                         setUpdatesPaused(!!v.paused);
+                        if(v.forceUpdate&&v.forceUpdate.active&&new Date(v.forceUpdate.time)>new Date()){
+                            setForceActive(true);setForceTime(v.forceUpdate.time);
+                        }else{setForceActive(false);setForceTime('')}
                     }else{setNewVersion(APP_VERSION)}
                 }catch(e){console.error(e)}
                 finally{setLoading(false)}
@@ -2897,6 +2944,41 @@ function getOrCreateSheet(){
                 }
             };
             
+            // Force Update countdown
+            useEffect(()=>{
+                if(!forceActive||!forceTime)return;
+                const tick=()=>{
+                    const diff=new Date(forceTime)-new Date();
+                    if(diff<=0){setForceCountdown('00:00:00');return}
+                    const h=Math.floor(diff/3600000);const m=Math.floor((diff%3600000)/60000);const s=Math.floor((diff%60000)/1000);
+                    setForceCountdown(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'));
+                };
+                tick();
+                const iv=setInterval(tick,1000);
+                return()=>clearInterval(iv);
+            },[forceActive,forceTime]);
+            
+            const scheduleForceUpdate=async()=>{
+                if(!forceTime){showNotification('Bitte Zeit festlegen!','error');return}
+                const ft=new Date(forceTime);
+                if(ft<=new Date()){showNotification('Zeitpunkt muss in der Zukunft liegen!','error');return}
+                const vInfo={...cloudVersion,forceUpdate:{active:true,time:forceTime,message:message.trim()||'Zwangsupdate geplant',scheduledAt:new Date().toISOString()}};
+                // Auto-unpause so agents see the version
+                delete vInfo.paused;setUpdatesPaused(false);
+                await api.saveVersion(vInfo);
+                setCloudVersion(vInfo);setForceActive(true);
+                showNotification('\u26a1 Zwangsupdate geplant f\u00fcr '+ft.toLocaleString('de-DE'));
+            };
+            
+            const cancelForceUpdate=async()=>{
+                if(!cloudVersion)return;
+                const vInfo={...cloudVersion};
+                delete vInfo.forceUpdate;
+                await api.saveVersion(vInfo);
+                setCloudVersion(vInfo);setForceActive(false);setForceTime('');setForceCountdown('');
+                showNotification('Zwangsupdate abgebrochen');
+            };
+            
             const resetUpload=()=>{
                 setUploadState('idle');
                 setUploadProgress(0);
@@ -2988,6 +3070,35 @@ function getOrCreateSheet(){
                         <button onClick={toggleUpdatesPaused} className="relative w-12 h-6 rounded-full transition-all" style={{background:updatesPaused?'rgba(239,68,68,0.3)':'rgba(16,185,129,0.3)',border:'1px solid '+(updatesPaused?'rgba(239,68,68,0.4)':'rgba(16,185,129,0.4)')}}>
                             <div style={{position:'absolute',top:2,width:18,height:18,borderRadius:'50%',background:updatesPaused?'#ef4444':'#10b981',transition:'all 0.2s',left:updatesPaused?2:26}}/>
                         </button>
+                    </div>
+                    
+                    {/* Force Update Section */}
+                    <div className="mb-3 rounded-xl p-3" style={{background:forceActive?'rgba(239,68,68,0.06)':'rgba(255,255,255,0.02)',border:'1px solid '+(forceActive?'rgba(239,68,68,0.2)':'rgba(255,255,255,0.06)'),transition:'all 0.3s'}}>
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                                <span style={{fontSize:14}}>{'\u26a1'}</span>
+                                <span className="text-sm font-bold" style={{color:forceActive?'#f87171':'#94a3b8'}}>Zwangsupdate</span>
+                            </div>
+                            {forceActive&&<span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.3)',color:'#f87171',animation:'pulse 2s infinite'}}>AKTIV</span>}
+                        </div>
+                        {forceActive?(
+                            <div>
+                                <div className="text-center py-3 mb-2 rounded-lg" style={{background:'rgba(239,68,68,0.08)'}}>
+                                    <p className="text-xs text-slate-500 mb-1">Neustart in</p>
+                                    <p className="text-3xl font-black" style={{color:'#f87171',fontFamily:'monospace',letterSpacing:3}}>{forceCountdown||'--:--:--'}</p>
+                                    <p className="text-xs text-slate-500 mt-1">{new Date(forceTime).toLocaleString('de-DE')}</p>
+                                </div>
+                                <button onClick={cancelForceUpdate} className="w-full py-2 rounded-lg text-sm font-bold" style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',color:'#fca5a5'}}>{'✕'} Zwangsupdate abbrechen</button>
+                            </div>
+                        ):(
+                            <div>
+                                <p className="text-xs text-slate-500 mb-2">Agents werden zum festgelegten Zeitpunkt automatisch neugestartet und erhalten das Update.</p>
+                                <div className="flex gap-2 mb-2">
+                                    <input type="datetime-local" value={forceTime} onChange={e=>setForceTime(e.target.value)} className="flex-1 px-2 py-1.5 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs"/>
+                                    <button onClick={scheduleForceUpdate} disabled={!forceTime||!cloudVersion} className="px-4 py-1.5 rounded-lg text-xs font-bold disabled:opacity-30" style={{background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.3)',color:'#f87171'}}>{'\u26a1'} Planen</button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                     
                     {/* Status Banner */}
@@ -9960,6 +10071,9 @@ Regeln:
             const VOWEL_COST=250;
             // Normalize: ß→SS, then uppercase
             const normalizePhrase=(s)=>s.replace(/ß/g,'SS').toUpperCase();
+            const saveKey='ccone-wheel-'+currentUser.id+'_'+quiz.id;
+            const savedGame=useRef(null);
+            const[showResume,setShowResume]=useState(false);
             const[round,setRound]=useState(0);
             const[totalScore,setTotalScore]=useState(0);
             const[roundScore,setRoundScore]=useState(0);
@@ -9967,13 +10081,44 @@ Regeln:
             const[spinning,setSpinning]=useState(false);
             const[rotation,setRotation]=useState(0);
             const[landedSegment,setLandedSegment]=useState(null);
-            const[phase,setPhase]=useState('spin'); // spin, guess, vowel, solve, won, bankrott, risiko
+            const[phase,setPhase]=useState('spin');
             const[solveInput,setSolveInput]=useState('');
             const[showSolve,setShowSolve]=useState(false);
             const[gameComplete,setGameComplete]=useState(false);
             const[showHint,setShowHint]=useState(false);
             const[risikoMode,setRisikoMode]=useState(false);
             const[animation,setAnimation]=useState('');
+            
+            // Check for saved game on mount
+            useEffect(()=>{
+                try{
+                    const raw=localStorage.getItem(saveKey);
+                    if(raw){
+                        const s=JSON.parse(raw);
+                        if(s&&typeof s.round==='number'&&s.round<phrases.length){
+                            savedGame.current=s;
+                            setShowResume(true);
+                        }else{localStorage.removeItem(saveKey)}
+                    }
+                }catch(e){localStorage.removeItem(saveKey)}
+            },[]);
+            
+            const resumeGame=()=>{
+                const s=savedGame.current;
+                if(!s)return;
+                setRound(s.round);setTotalScore(s.totalScore||0);setRoundScore(s.roundScore||0);
+                setGuessedLetters(s.guessedLetters||[]);setPhase('spin');
+                setShowResume(false);
+                showNotification('Spielstand geladen! Runde '+(s.round+1)+'/'+phrases.length);
+            };
+            const discardSave=()=>{localStorage.removeItem(saveKey);savedGame.current=null;setShowResume(false)};
+            const saveAndQuit=()=>{
+                const state={round,totalScore,roundScore,guessedLetters,savedAt:new Date().toISOString()};
+                localStorage.setItem(saveKey,JSON.stringify(state));
+                showNotification('Spielstand gespeichert!');
+                onClose();
+            };
+            const clearSave=()=>{try{localStorage.removeItem(saveKey)}catch(e){}};
             const currentPhrase=phrases[round]||phrases[0];
             const phraseLetters=normalizePhrase(currentPhrase.phrase).replace(/[^A-ZÄÖÜ]/g,'');
             const uniqueLetters=[...new Set(phraseLetters.split(''))];
@@ -10037,15 +10182,103 @@ Regeln:
                 const earned=roundScore+bonus;
                 setTotalScore(totalScore+earned);
                 setAnimation('solved');setPhase('won');
-                setTimeout(()=>{
+                setTimeout(async()=>{
                     setAnimation('');
                     if(round+1>=phrases.length){
-                        addResult({id:Date.now().toString(),userId:currentUser.id,quizId:quiz.id,score:Math.min(100,Math.round((totalScore+earned)/phrases.length/5)),passed:true,type:'wheel',totalScore:totalScore+earned,rounds:phrases.length,completedAt:new Date().toISOString()});
-                        saveTournamentScore(totalScore+earned);
+                        const finalTotal=totalScore+earned;
+                        const resultObj={id:Date.now().toString(),userId:currentUser.id,quizId:quiz.id,score:Math.min(100,Math.round(finalTotal/phrases.length/5)),passed:true,type:'wheel',totalScore:finalTotal,rounds:phrases.length,completedAt:new Date().toISOString()};
+                        
+                        // Save result to separate cell
+                        try{await api.addResult(resultObj)}catch(e){console.error('addResult error:',e)}
+                        
+                        // Build ONE atomic update: tournament score + reward points + history
+                        let patchData={...appData};
+                        
+                        // 1) Tournament score
+                        if(activeTournament&&tournamentMatch&&updateData){
+                            const tList=(patchData.wheelTournaments||[]).map(t=>{
+                                if(t.id!==activeTournament.id)return t;
+                                const bracket=t.bracket.map(r=>r.map(m=>{
+                                    if(m.id!==tournamentMatch.id)return{...m};
+                                    const nm={...m};
+                                    if(m.p1?.id===currentUser.id)nm.score1=finalTotal;
+                                    else if(m.p2?.id===currentUser.id)nm.score2=finalTotal;
+                                    if(nm.score1!==null&&nm.score2!==null&&nm.score1!==nm.score2){
+                                        nm.winner=nm.score1>nm.score2?nm.p1.id:nm.p2.id;
+                                    }
+                                    return nm;
+                                }));
+                                for(let ri=0;ri<bracket.length-1;ri++){
+                                    for(let mi=0;mi<bracket[ri].length;mi++){
+                                        const m=bracket[ri][mi];if(!m.winner)continue;
+                                        const nmi=Math.floor(mi/2);const isTop=mi%2===0;
+                                        const winner=m.p1?.id===m.winner?m.p1:m.p2;
+                                        if(isTop)bracket[ri+1][nmi]={...bracket[ri+1][nmi],p1:winner};
+                                        else bracket[ri+1][nmi]={...bracket[ri+1][nmi],p2:winner};
+                                    }
+                                }
+                                const finalM=bracket[bracket.length-1][0];
+                                return{...t,bracket,status:finalM.winner?'finished':'active'};
+                            });
+                            patchData={...patchData,wheelTournaments:tList};
+                        }
+                        
+                        // 2) Reward points
+                        const rc=patchData.rewardsConfig;
+                        if(rc&&rc.enabled){
+                            const gt=rc.gameTypes?.wheel;
+                            if(gt&&gt.status==='active'&&!gt.noPoints){
+                                const maxRounds=gt.maxRounds||1;
+                                const histKey=currentUser.id+'_'+quiz.id;
+                                const hist={...(patchData.rewardsHistory||{})};
+                                const count=hist[histKey]||0;
+                                if(count<maxRounds){
+                                    let pts_earned=gt.points||0;
+                                    if(resultObj.score>=80)pts_earned+=(rc.bonusPassedQuiz||0);
+                                    if(resultObj.score>=100)pts_earned+=(rc.bonusPerfectScore||0);
+                                    if(pts_earned>0){
+                                        const pts={...(patchData.rewardsPoints||{})};
+                                        pts[currentUser.id]=(pts[currentUser.id]||0)+pts_earned;
+                                        hist[histKey]=count+1;
+                                        patchData={...patchData,rewardsPoints:pts,rewardsHistory:hist};
+                                        showNotification('\ud83c\udfc6 +'+pts_earned+' Punkte!');
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 3) Update local state + ONE backend save
+                        patchData={...patchData,results:[...(patchData.results||[]),resultObj]};
+                        if(updateData)await updateData(patchData);
+                        
+                        console.log('[WHEEL] Atomic save done: result + tournament + points');
+                        clearSave();
                         setGameComplete(true)
                     }else{setRound(round+1);setRoundScore(0);setGuessedLetters([]);setLandedSegment(null);setPhase('spin');setShowHint(false);setShowSolve(false)}
                 },2500)
             };
+            // Resume dialog
+            if(showResume&&savedGame.current){
+                const s=savedGame.current;
+                const savedDate=s.savedAt?new Date(s.savedAt).toLocaleString('de-DE'):'Unbekannt';
+                return(
+                <div className="min-h-screen flex items-center justify-center p-4" style={{background:'radial-gradient(ellipse at center,#1a1400 0%,#0a0800 50%,#000 100%)'}}>
+                    <div className="text-center" style={{maxWidth:400}}>
+                        <div style={{fontSize:64,marginBottom:16}}>{'\ud83d\udcbe'}</div>
+                        <h2 className="text-2xl font-black text-white mb-2">Spielstand gefunden!</h2>
+                        <div className="mb-6 p-4 rounded-xl" style={{background:'rgba(212,175,55,0.1)',border:'1px solid rgba(212,175,55,0.3)'}}>
+                            <div className="flex justify-between text-sm mb-2"><span className="text-slate-400">Runde</span><span className="text-white font-bold">{s.round+1} / {phrases.length}</span></div>
+                            <div className="flex justify-between text-sm mb-2"><span className="text-slate-400">Punkte</span><span style={{color:'#d4af37',fontWeight:700}}>{(s.totalScore||0).toLocaleString()}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-slate-400">Gespeichert</span><span className="text-white">{savedDate}</span></div>
+                        </div>
+                        <div className="flex flex-col gap-3">
+                            <button onClick={resumeGame} className="w-full py-3 rounded-xl font-bold text-sm" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#000'}}>{'▶'} Weiterspielen</button>
+                            <button onClick={discardSave} className="w-full py-3 rounded-xl font-bold text-sm" style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',color:'#fff'}}>{'🔄'} Neu starten</button>
+                            <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-300">Zur{'\u00fc'}ck</button>
+                        </div>
+                    </div>
+                </div>);
+            }
             if(gameComplete)return(
                 <div className="min-h-screen flex items-center justify-center p-4" style={{background:'radial-gradient(ellipse at center,#1a1400 0%,#0a0800 50%,#000 100%)'}}>
                     <Fireworks/>
@@ -10127,7 +10360,7 @@ Regeln:
                         <div style={{minWidth:340,maxWidth:480}}>
                             {/* Status message */}
                             <div style={{textAlign:'center',marginBottom:16,minHeight:50}}>
-                                {phase==='spin'&&!spinning&&<button onClick={spin} style={{padding:'18px 56px',borderRadius:16,background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#000',fontSize:22,fontWeight:900,border:'none',cursor:'pointer',boxShadow:'0 4px 20px rgba(212,175,55,0.4)',letterSpacing:2}}>🎡 DREHEN!</button>}
+                                {phase==='spin'&&!spinning&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8}}><button onClick={spin} style={{padding:'18px 56px',borderRadius:16,background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#000',fontSize:22,fontWeight:900,border:'none',cursor:'pointer',boxShadow:'0 4px 20px rgba(212,175,55,0.4)',letterSpacing:2}}>{'\ud83c\udfa1'} DREHEN!</button>{(round>0||totalScore>0)&&<button onClick={saveAndQuit} style={{padding:'8px 24px',borderRadius:10,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',color:'#94a3b8',fontSize:12,fontWeight:600,cursor:'pointer'}}>{'\ud83d\udcbe'} Speichern & Beenden</button>}</div>}
                                 {phase==='spinning'&&<div style={{color:'#d4af37',fontSize:18,fontWeight:700,animation:'uno-float 1s infinite'}}>Dreht sich...</div>}
                                 {phase==='guess'&&<div style={{color:'#2ecc71',fontSize:16,fontWeight:700}}>Wähle einen Konsonanten! ({landedSegment?.value} pro Treffer)</div>}
                                 {phase==='risiko'&&<div style={{color:'#e91e63',fontSize:16,fontWeight:700,animation:'uno-glow 1s infinite'}}>⚡ RISIKO! Rate richtig = Score verdoppelt!</div>}
