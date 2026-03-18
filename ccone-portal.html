@@ -197,7 +197,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.6.7';
+        const APP_VERSION = '5.6.8';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -6152,6 +6152,40 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
             );
         }
 
+        function MatchCard({m,mi,ri,tid,done,isAdmin,onConfirm,onReset}){
+            const[s1,setS1]=useState(m.score1!==null?String(m.score1):'');
+            const[s2,setS2]=useState(m.score2!==null?String(m.score2):'');
+            const[editing,setEditing]=useState(false);
+            useEffect(()=>{setS1(m.score1!==null?String(m.score1):'');setS2(m.score2!==null?String(m.score2):'');},[m.score1,m.score2]);
+            const canConfirm=s1!==''&&s2!==''&&s1!==s2;
+            const handleConfirm=()=>{onConfirm(tid,ri,mi,+s1,+s2);setEditing(false)};
+            return(
+            <div className="rounded-xl overflow-hidden" style={{border:'1.5px solid '+(done?'rgba(16,185,129,0.3)':'rgba(255,255,255,0.08)'),background:done?'rgba(16,185,129,0.04)':'rgba(255,255,255,0.02)'}}>
+                {[{p:m.p1,s:m.score1,localS:s1,setS:setS1,num:1,isW:m.winner===m.p1?.id},{p:m.p2,s:m.score2,localS:s2,setS:setS2,num:2,isW:m.winner===m.p2?.id}].map((x,pi)=>(
+                    <div key={pi} className="flex items-center justify-between px-3 py-2.5" style={{background:x.isW?'rgba(212,175,55,0.08)':'transparent',borderBottom:pi===0?'1px solid rgba(255,255,255,0.06)':'none'}}>
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                            {x.isW&&<span style={{fontSize:12}}>{'👑'}</span>}
+                            <span className="text-sm font-medium truncate" style={{color:x.p?x.isW?'#d4af37':x.p.isBye?'#555':'#fff':'#333'}}>{x.p?.name||'\u2014'}</span>
+                        </div>
+                        {x.p&&!x.p.isBye&&isAdmin&&(!done||editing)?(
+                            <input type="number" min="0" value={x.localS} onChange={e=>x.setS(e.target.value)} className="w-20 px-2 py-1 rounded border border-slate-600 bg-slate-800/80 text-white text-center text-sm font-bold focus:border-amber-500 focus:outline-none" placeholder="Pkt"/>
+                        ):(
+                            <span className="text-sm font-bold min-w-[3rem] text-right" style={{color:x.isW?'#d4af37':x.s!==null?'#fff':'#555'}}>{x.s!==null?x.s.toLocaleString():x.p?.isBye?'\u2014':''}</span>
+                        )}
+                    </div>
+                ))}
+                {isAdmin&&m.p1&&m.p2&&!m.p1.isBye&&!m.p2.isBye&&(
+                    <div className="flex gap-1 px-2 py-1.5" style={{background:'rgba(0,0,0,0.15)',borderTop:'1px solid rgba(255,255,255,0.04)'}}>
+                        {!done&&canConfirm&&<button onClick={handleConfirm} className="flex-1 py-1 rounded text-xs font-bold" style={{background:'rgba(16,185,129,0.2)',color:'#6ee7b7',border:'1px solid rgba(16,185,129,0.3)'}}>{'✓'} Best{'\u00e4'}tigen</button>}
+                        {!done&&s1===s2&&s1!==''&&<span className="flex-1 py-1 text-center text-xs text-amber-400">Unentschieden nicht erlaubt</span>}
+                        {done&&!editing&&<button onClick={()=>setEditing(true)} className="flex-1 py-1 rounded text-xs" style={{background:'rgba(255,255,255,0.04)',color:'#94a3b8'}}>{'✏️'} Bearbeiten</button>}
+                        {done&&!editing&&<button onClick={()=>onReset(tid,ri,mi)} className="flex-1 py-1 rounded text-xs" style={{background:'rgba(239,68,68,0.1)',color:'#fca5a5'}}>{'↩'} Zur{'\u00fc'}cksetzen</button>}
+                        {editing&&canConfirm&&<button onClick={handleConfirm} className="flex-1 py-1 rounded text-xs font-bold" style={{background:'rgba(16,185,129,0.2)',color:'#6ee7b7',border:'1px solid rgba(16,185,129,0.3)'}}>{'✓'} Speichern</button>}
+                        {editing&&<button onClick={()=>{setEditing(false);setS1(m.score1!==null?String(m.score1):'');setS2(m.score2!==null?String(m.score2):'')}} className="flex-1 py-1 rounded text-xs" style={{background:'rgba(255,255,255,0.04)',color:'#94a3b8'}}>Abbrechen</button>}
+                    </div>
+                )}
+            </div>);
+        }
         function WheelTournament({appData,updateData,showNotification,currentUser,isAdmin}){
             const tournaments=appData.wheelTournaments||[];
             const[showCreate,setShowCreate]=useState(false);
@@ -6241,12 +6275,55 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                     const m=bracket[ri][mi];
                     if(player===1)m.score1=score;else m.score2=score;
                     if(m.score1!==null&&m.score2!==null&&m.score1!==m.score2)m.winner=m.score1>m.score2?m.p1.id:m.p2.id;
+                    else m.winner=null;
+                    const updated={...t,bracket:advanceBracket(bracket)};
+                    const fm=updated.bracket[updated.bracket.length-1][0];
+                    if(fm.winner)updated.status='finished';
+                    else updated.status='active';
+                    return updated;
+                });
+                updateData({...appData,wheelTournaments:tList});
+            };
+
+            const confirmMatch=(tid,ri,mi,s1,s2)=>{
+                if(s1===null||s2===null){showNotification('Beide Punktzahlen eingeben!','error');return}
+                if(s1===s2){showNotification('Unentschieden nicht erlaubt!','error');return}
+                const tList=tournaments.map(t=>{
+                    if(t.id!==tid)return t;
+                    const bracket=t.bracket.map(r=>r.map(m=>({...m})));
+                    const m=bracket[ri][mi];
+                    m.score1=s1;m.score2=s2;
+                    m.winner=s1>s2?m.p1.id:m.p2.id;
                     const updated={...t,bracket:advanceBracket(bracket)};
                     const fm=updated.bracket[updated.bracket.length-1][0];
                     if(fm.winner)updated.status='finished';
                     return updated;
                 });
                 updateData({...appData,wheelTournaments:tList});
+                showNotification('Ergebnis gespeichert!');
+            };
+
+            const resetMatch=(tid,ri,mi)=>{
+                if(!confirm('Match-Ergebnis zurücksetzen?'))return;
+                const tList=tournaments.map(t=>{
+                    if(t.id!==tid)return t;
+                    const bracket=t.bracket.map(r=>r.map(m=>({...m})));
+                    bracket[ri][mi]={...bracket[ri][mi],score1:null,score2:null,winner:null};
+                    // Clear downstream matches
+                    for(let r=ri+1;r<bracket.length;r++){
+                        for(let m=0;m<bracket[r].length;m++){
+                            const src1=Math.floor(m)*2;const src2=src1+1;
+                            if(r===ri+1&&(src1===mi||src2===mi)){
+                                const slot=src1===mi?'p1':'p2';
+                                bracket[r][m]={...bracket[r][m],[slot]:null,score1:null,score2:null,winner:null};
+                            }
+                        }
+                    }
+                    const updated={...t,bracket:advanceBracket(bracket),status:'active'};
+                    return updated;
+                });
+                updateData({...appData,wheelTournaments:tList});
+                showNotification('Match zurückgesetzt');
             };
 
             const deleteTournament=(id)=>{if(!confirm('Turnier löschen?'))return;updateData({...appData,wheelTournaments:tournaments.filter(t=>t.id!==id)});if(viewTournament?.id===id)setViewTournament(null);showNotification('Gelöscht')};
@@ -6286,22 +6363,7 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                                     </div>
                                     {round.map((m,mi)=>{
                                         const done=m.winner!==null;
-                                        return(
-                                        <div key={mi} className="rounded-xl overflow-hidden" style={{border:'1.5px solid '+(done?'rgba(16,185,129,0.3)':'rgba(255,255,255,0.08)'),background:done?'rgba(16,185,129,0.04)':'rgba(255,255,255,0.02)'}}>
-                                            {[{p:m.p1,s:m.score1,num:1,isW:m.winner===m.p1?.id},{p:m.p2,s:m.score2,num:2,isW:m.winner===m.p2?.id}].map((x,pi)=>(
-                                                <div key={pi} className="flex items-center justify-between px-3 py-2" style={{background:x.isW?'rgba(212,175,55,0.08)':'transparent',borderBottom:pi===0?'1px solid rgba(255,255,255,0.06)':'none'}}>
-                                                    <div className="flex items-center gap-2">
-                                                        {x.isW&&<span style={{fontSize:12}}>👑</span>}
-                                                        <span className="text-sm font-medium" style={{color:x.p?x.isW?'#d4af37':x.p.isBye?'#555':'#fff':'#333'}}>{x.p?.name||'—'}</span>
-                                                    </div>
-                                                    {x.p&&!x.p.isBye&&isAdmin?(
-                                                        <input type="number" min="0" value={x.s!==null?x.s:''} onChange={e=>{const v=e.target.value===''?null:Math.max(0,+e.target.value);setScore(tv.id,ri,mi,x.num,v)}} className="w-16 px-2 py-0.5 rounded border border-slate-600 bg-slate-800/80 text-white text-center text-xs font-bold" placeholder="Pkt" disabled={done}/>
-                                                    ):(
-                                                        <span className="text-sm font-bold" style={{color:x.isW?'#d4af37':x.s!==null?'#fff':'#555'}}>{x.s!==null?x.s.toLocaleString():x.p?.isBye?'—':''}</span>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>);
+                                        return(<MatchCard key={mi} m={m} mi={mi} ri={ri} tid={tv.id} done={done} isAdmin={isAdmin} onConfirm={confirmMatch} onReset={resetMatch}/>);
                                     })}
                                 </div>);
                             })}
@@ -9830,22 +9892,34 @@ Regeln:
         }
 
 
-        function WheelGame({quiz,onClose,currentUser,addResult,showNotification,appData,updateData}){
+        function WheelGame({quiz,onClose,currentUser,addResult,showNotification,appData,updateData,tournamentCtx}){
             const phrases=quiz.wheelSegments||[];
             if(phrases.length===0)return(<div className="min-h-screen bg-black flex items-center justify-center"><div className="text-center"><p className="text-white text-xl mb-4">Keine Begriffe vorhanden</p><button onClick={onClose} className="btn-primary text-white px-6 py-3 rounded-xl">Zurück</button></div></div>);
 
-            // Tournament check
-            const activeTournament=appData?(appData.wheelTournaments||[]).find(t=>{
-                if(t.status!=='active')return false;
-                const rw=t.roundWheels||{};
-                const matchesQuiz=t.quizId===quiz.id||Object.values(rw).includes(quiz.id);
-                if(!matchesQuiz)return false;
-                return t.bracket.some((r,ri)=>{const wid=rw[ri]||rw[0]||t.quizId;return wid===quiz.id&&r.some(m=>!m.winner&&((m.p1?.id===currentUser.id&&m.score1===null)||(m.p2?.id===currentUser.id&&m.score2===null)))});
-            }):null;
-            const tournamentMatch=activeTournament?activeTournament.bracket.reduce((found,r)=>found||r.find(m=>!m.winner&&((m.p1?.id===currentUser.id&&m.score1===null)||(m.p2?.id===currentUser.id&&m.score2===null))),null):null;
+            // Tournament check — use direct context if available, fallback to matching
+            const activeTournament=appData?(()=>{
+                if(tournamentCtx){
+                    const t=(appData.wheelTournaments||[]).find(t=>t.id===tournamentCtx.tournamentId);
+                    if(t&&t.status==='active')return t;
+                }
+                return (appData.wheelTournaments||[]).find(t=>{
+                    if(t.status!=='active')return false;
+                    const rw=t.roundWheels||{};
+                    const matchesQuiz=t.quizId===quiz.id||Object.values(rw).includes(quiz.id);
+                    if(!matchesQuiz)return false;
+                    return t.bracket.some((r,ri)=>{const wid=rw[ri]||rw[0]||t.quizId;return wid===quiz.id&&r.some(m=>!m.winner&&((m.p1?.id===currentUser.id&&(m.score1===null||m.score1===undefined))||(m.p2?.id===currentUser.id&&(m.score2===null||m.score2===undefined))))});
+                });
+            })():null;
+            const tournamentMatch=activeTournament?(()=>{
+                if(tournamentCtx){
+                    for(const r of activeTournament.bracket){const m=r.find(m=>m.id===tournamentCtx.matchId);if(m)return m;}
+                }
+                return activeTournament.bracket.reduce((found,r)=>found||r.find(m=>!m.winner&&((m.p1?.id===currentUser.id&&(m.score1===null||m.score1===undefined))||(m.p2?.id===currentUser.id&&(m.score2===null||m.score2===undefined)))),null);
+            })():null;
             const tournamentOpponent=tournamentMatch?(tournamentMatch.p1?.id===currentUser.id?tournamentMatch.p2:tournamentMatch.p1):null;
 
             const saveTournamentScore=(finalScore)=>{
+                console.log('[TURNIER] saveTournamentScore called:',{finalScore,hasTournament:!!activeTournament,hasMatch:!!tournamentMatch,tournamentCtx});
                 if(!activeTournament||!tournamentMatch||!updateData)return;
                 const tList=(appData.wheelTournaments||[]).map(t=>{
                     if(t.id!==activeTournament.id)return t;
@@ -11117,7 +11191,7 @@ Regeln:
 
         function UserDashboard({currentUser,appData,addResult,updateData,refreshData,refreshUnoGamesOnly,refreshPokerGamesOnly,onLogout,showNotification,onNavigate}){const[activeQuiz,setActiveQuiz]=useState(null);const[activeMemory,setActiveMemory]=useState(null);const[activeSudoku,setActiveSudoku]=useState(null);const[activeChess,setActiveChess]=useState(false);const[activeUno,setActiveUno]=useState(null);const[activePoker,setActivePoker]=useState(null);const[activeCrossword,setActiveCrossword]=useState(null);const[activePVInstaller,setActivePVInstaller]=useState(null);
             const[activeMillionaire,setActiveMillionaire]=useState(null);
-            const[activeWheel,setActiveWheel]=useState(null);const[activeMonopoly,setActiveMonopoly]=useState(null);const[currentQuestion,setCurrentQuestion]=useState(0);const[selectedAnswer,setSelectedAnswer]=useState(null);const[showResult,setShowResult]=useState(false);const[quizAnswers,setQuizAnswers]=useState([]);const[messageModal,setMessageModal]=useState(null);const[messageText,setMessageText]=useState('');const[viewDetailsModal,setViewDetailsModal]=useState(null);const[lotteryWinModal,setLotteryWinModal]=useState(null);const[rankingFilter,setRankingFilter]=useState('all');
+            const[activeWheel,setActiveWheel]=useState(null);const[wheelTournamentCtx,setWheelTournamentCtx]=useState(null);const[activeMonopoly,setActiveMonopoly]=useState(null);const[currentQuestion,setCurrentQuestion]=useState(0);const[selectedAnswer,setSelectedAnswer]=useState(null);const[showResult,setShowResult]=useState(false);const[quizAnswers,setQuizAnswers]=useState([]);const[messageModal,setMessageModal]=useState(null);const[messageText,setMessageText]=useState('');const[viewDetailsModal,setViewDetailsModal]=useState(null);const[lotteryWinModal,setLotteryWinModal]=useState(null);const[rankingFilter,setRankingFilter]=useState('all');
             const newsSoundPlayedRef=useRef({});
             // Check for unseen lottery/pause wins
             // Tab-blink notification (works inside iframe - like WhatsApp/Teams)
@@ -11791,7 +11865,7 @@ Regeln:
             
             // Crossword View
             if(activeWheel){
-                return <WheelGame quiz={activeWheel} currentUser={currentUser} onClose={()=>setActiveWheel(null)} addResult={addResultWithPoints} showNotification={showNotification} appData={appData} updateData={updateData}/>;
+                return <WheelGame quiz={activeWheel} currentUser={currentUser} onClose={()=>{setActiveWheel(null);setWheelTournamentCtx(null)}} addResult={addResultWithPoints} showNotification={showNotification} appData={appData} updateData={updateData} tournamentCtx={wheelTournamentCtx}/>;
             }
             if(activeMonopoly){
                 return <MonopolyGame quiz={activeMonopoly} currentUser={currentUser} onClose={()=>setActiveMonopoly(null)} appData={appData} updateData={updateData} showNotification={showNotification}/>;
@@ -12240,7 +12314,7 @@ Regeln:
                                     <p className="text-xs text-slate-400 mt-1">{oppScore!==null?'Gegner: '+oppScore.toLocaleString()+' Punkte':'Warte auf Gegner...'}</p>
                                 </div>
                             ):wheelQuiz?(
-                                <button onClick={()=>setActiveWheel(wheelQuiz)} className="w-full py-3 rounded-xl font-bold text-sm" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#000',boxShadow:'0 4px 15px rgba(212,175,55,0.3)'}}>🎡 Turnier-Match starten</button>
+                                <button onClick={()=>{setWheelTournamentCtx({tournamentId:myTournament.id,matchId:myMatch.id});setActiveWheel(wheelQuiz)}} className="w-full py-3 rounded-xl font-bold text-sm" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#000',boxShadow:'0 4px 15px rgba(212,175,55,0.3)'}}>🎡 Turnier-Match starten</button>
                             ):(
                                 <p className="text-xs text-red-400 text-center">Glücksrad für diese Runde nicht gefunden</p>
                             )}
