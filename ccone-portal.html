@@ -197,7 +197,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.6.6';
+        const APP_VERSION = '5.6.7';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -985,7 +985,7 @@ function getOrCreateSheet(){
                     // Check cloud version (non-blocking)
                     try{
                         const cv=await api.getVersion();
-                        if(cv&&cv.version&&cv.version!==APP_VERSION){
+                        if(cv&&cv.version&&cv.version!==APP_VERSION&&!cv.paused){
                             setUpdateAvailable(cv);
                         }
                     }catch(e){}
@@ -2585,6 +2585,7 @@ function getOrCreateSheet(){
             const[githubToken,setGithubToken]=useState(()=>localStorage.getItem('ccone-github-token')||'');
             const[showGHToken,setShowGHToken]=useState(false);
             const[ghTokenVisible,setGhTokenVisible]=useState(false);
+            const[updatesPaused,setUpdatesPaused]=useState(false);
             const ghRepo='Seuche1701/ccone-portal';
             const ghFile='ccone-portal.html';
             const ghBranch='main';
@@ -2599,6 +2600,7 @@ function getOrCreateSheet(){
                         setCloudVersion(v);
                         setNewVersion(v.version);
                         setFileName(v.fileName||'ccone-portal.html');
+                        setUpdatesPaused(!!v.paused);
                     }else{setNewVersion(APP_VERSION)}
                 }catch(e){console.error(e)}
                 finally{setLoading(false)}
@@ -2866,10 +2868,11 @@ function getOrCreateSheet(){
                     const downloadUrl='https://raw.githubusercontent.com/'+ghRepo+'/refs/heads/'+ghBranch+'/'+ghFile;
                     const vInfo={version:ver,message:message.trim()||'Neue Version',fileName:fName,date:new Date().toISOString(),publishedBy:'Admin',
                         downloadUrl:downloadUrl,originalUrl:'https://github.com/'+ghRepo+'/blob/'+ghBranch+'/'+ghFile,source:'github'};
+                    if(updatesPaused)vInfo.paused=true;
                     await api.saveVersion(vInfo);
                     
                     setUploadProgress(100);
-                    setUploadStatus('\u2705 Update v'+ver+' auf GitHub ver\u00f6ffentlicht!');
+                    setUploadStatus(updatesPaused?'\u2705 Update v'+ver+' auf GitHub gepusht (Agents pausiert!)':'\u2705 Update v'+ver+' auf GitHub ver\u00f6ffentlicht!');
                     setUploadState('done');
                     setUploadResult({fileName:ghFile,size:updated.length,url:vInfo.originalUrl,source:'github'});
                     setCloudVersion(vInfo);
@@ -2881,6 +2884,18 @@ function getOrCreateSheet(){
             };
             
             const saveGHToken=(t)=>{setGithubToken(t);if(t.trim())localStorage.setItem('ccone-github-token',t.trim());else localStorage.removeItem('ccone-github-token')};
+            
+            const toggleUpdatesPaused=async()=>{
+                const newPaused=!updatesPaused;
+                setUpdatesPaused(newPaused);
+                if(cloudVersion){
+                    const vInfo={...cloudVersion};
+                    if(newPaused)vInfo.paused=true;else delete vInfo.paused;
+                    await api.saveVersion(vInfo);
+                    setCloudVersion(vInfo);
+                    showNotification(newPaused?'Updates f\u00fcr Agenten pausiert':'Updates f\u00fcr Agenten aktiviert!');
+                }
+            };
             
             const resetUpload=()=>{
                 setUploadState('idle');
@@ -2962,6 +2977,17 @@ function getOrCreateSheet(){
                                 <p className="text-xs text-slate-500 mt-1">Nicht verbunden</p>
                             }
                         </div>
+                    </div>
+                    
+                    {/* Agent Updates Toggle */}
+                    <div className="mb-3 p-2.5 rounded-xl flex items-center justify-between" style={{background:updatesPaused?'rgba(239,68,68,0.06)':'rgba(16,185,129,0.06)',border:'1px solid '+(updatesPaused?'rgba(239,68,68,0.15)':'rgba(16,185,129,0.15)'),transition:'all 0.3s'}}>
+                        <div>
+                            <p className="text-sm font-bold" style={{color:updatesPaused?'#f87171':'#6ee7b7'}}>{updatesPaused?'\u23f8 Updates f\u00fcr Agenten pausiert':'\u25b6 Updates f\u00fcr Agenten aktiv'}</p>
+                            <p className="text-xs text-slate-500">{updatesPaused?'Agenten sehen keine Updates bis du wieder aktivierst':'Agenten sehen neue Versionen sofort'}</p>
+                        </div>
+                        <button onClick={toggleUpdatesPaused} className="relative w-12 h-6 rounded-full transition-all" style={{background:updatesPaused?'rgba(239,68,68,0.3)':'rgba(16,185,129,0.3)',border:'1px solid '+(updatesPaused?'rgba(239,68,68,0.4)':'rgba(16,185,129,0.4)')}}>
+                            <div style={{position:'absolute',top:2,width:18,height:18,borderRadius:'50%',background:updatesPaused?'#ef4444':'#10b981',transition:'all 0.2s',left:updatesPaused?2:26}}/>
+                        </button>
                     </div>
                     
                     {/* Status Banner */}
