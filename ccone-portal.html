@@ -193,11 +193,12 @@
     <script type="text/babel">
 
         const{useState,useEffect,useRef}=React;
+        const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.7.9';
+        const APP_VERSION = '5.8.0';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -538,7 +539,7 @@ function getData(){
       'rewardsPoints','rewardsHistory','rewardsPurchases','termine','termineConfig','news','monopolyGames',
       'pausenConfig','pausenAwards','trainingMaterials','trainingMode','spaetschicht','wheelTournaments','onlineUsers','agentMessages'];
     var objKeys=['customTemplates','customKeywords','rewardsConfig','rewardsPoints',
-      'rewardsHistory','rewardsPurchases','pausenConfig','spaetschicht','termineConfig','trainingMode','onlineUsers','agentMessages'];
+      'rewardsHistory','rewardsPurchases','pausenConfig','spaetschicht','termineConfig','trainingMode','onlineUsers'];
     keys.forEach(function(key){
       var range=rm[key];var cell=range?'A'+range.start:null;
       if(!cell||cell==='A1')return;
@@ -1424,7 +1425,7 @@ function getOrCreateSheet(){
             const[ekdDate,setEkdDate]=useState(new Date().toISOString().split('T')[0]);
             const[ekdEntries,setEkdEntries]=useState({});
             const[ekdShowImport,setEkdShowImport]=useState(false);
-            const termine=appData.termine||[];
+            const termine=asArr(appData.termine);
             const agents=appData.users?.filter(u=>u.role==='user')||[];
             const projects=appData.projects||[];
             const absenceAgents=appData.agents||[];
@@ -12995,7 +12996,7 @@ Regeln:
                         // Match by agentId OR by fuzzy name (handles absence-agent-ID vs login-ID mismatch)
                         const normName=(s)=>s?.trim().toLowerCase().replace(/,/g,' ').replace(/[-–—]/g,' ').split(/\s+/).filter(p=>p.length>=2)||[];
                         const myParts=normName(currentUser.name);
-                        const allTermine=appData.termine||[];
+                        const allTermine=asArr(appData.termine);
                         const isMyTermin=(t)=>{
                             if(t.agentId===currentUser.id)return true;
                             // Fuzzy name match - allow 1 mismatch for typos like Silvia/Sylvia
@@ -13064,7 +13065,7 @@ Regeln:
                             })()}
                         </div>);
                     })()}
-                    {(()=>{const allTermine=appData.termine||[];const allUsers=appData.users?.filter(u=>u.role==='user')||[];const monthAgo=new Date(Date.now()-30*86400000).toISOString().split('T')[0];
+                    {(()=>{const allTermine=asArr(appData.termine);const allUsers=appData.users?.filter(u=>u.role==='user')||[];const monthAgo=new Date(Date.now()-30*86400000).toISOString().split('T')[0];
                         const projects=appData.projects||[];const absAgents=appData.agents||[];
                         const vnrPid=projects.find(p=>p.name==='VNR')?.id;const ekdPid=projects.find(p=>p.name==='EKD')?.id;
                         const getProjectUsers=(pid)=>{if(!pid)return allUsers;const names=absAgents.filter(a=>a.projectId===pid).map(a=>a.name.toLowerCase().replace(/,/g,'').replace(/\s+/g,' ').trim());return allUsers.filter(u=>{const up=u.name.toLowerCase().split(' ');return names.some(n=>{const np=n.split(' ');return up.every(p=>np.some(x=>x.includes(p)||p.includes(x)))||np.every(p=>up.some(x=>x.includes(p)||p.includes(x)))})})};
