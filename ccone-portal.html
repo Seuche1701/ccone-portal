@@ -197,7 +197,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.7.4';
+        const APP_VERSION = '5.7.5';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -1032,7 +1032,9 @@ function getOrCreateSheet(){
             const saveScriptUrl=()=>{if(!scriptUrl.includes('script.google.com')){showNotification('Ungültige URL','error');return}localStorage.setItem('ccone-script-url',scriptUrl);window.location.reload()};
             const updateData=async(newData,skipSave)=>{
                 const safeData={...newData,customKeywords:newData.customKeywords||{},customTemplates:newData.customTemplates||{}};
-                setAppData(safeData);if(skipSave)return;try{await api.saveData(safeData)}catch(e){showNotification('Speicherfehler','error')}};
+                setAppData(safeData);if(skipSave)return;
+                window._savingUntil=Date.now()+10000;
+                try{await api.saveData(safeData)}catch(e){showNotification('Speicherfehler','error')}};
             const refreshData=async()=>{setLoading(true);try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};setAppData(data);showNotification('Aktualisiert!')}}catch(e){showNotification('Fehler','error')}finally{setLoading(false)}};
             const refreshUnoGamesOnly=async()=>{try{const games=await api.getUnoGames();if(Array.isArray(games)){setAppData(prev=>({...prev,unoGames:games}))}}catch(e){console.error('UNO refresh error:',e)}};
             const refreshPokerGamesOnly=async()=>{try{const games=await api.getPokerGames();if(Array.isArray(games)){setAppData(prev=>({...prev,pokerGames:games}))}}catch(e){console.error('Poker refresh error:',e)}};
@@ -10753,8 +10755,8 @@ Regeln:
 
             const materials=appData.trainingMaterials||[];
 
-            // Auto-refresh every 15s
-            useEffect(()=>{const poll=setInterval(async()=>{try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};updateData(data,true)}}catch(e){}},15000);return()=>clearInterval(poll)},[]);
+            // Auto-refresh every 15s (skip if save in progress)
+            useEffect(()=>{const poll=setInterval(async()=>{if(window._savingUntil&&Date.now()<window._savingUntil)return;try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};updateData(data,true)}}catch(e){}},15000);return()=>clearInterval(poll)},[]);
 
             const categories=[
                 {id:'datenschutz',label:'🛡️ Teach to Protect',color:'#8b5cf6'},
@@ -11599,7 +11601,7 @@ Regeln:
             /* pausenAwards notification now handled globally in App */
             // Poll disabled - use manual refresh instead
             // Auto-refresh for agents: check for changes every 15 seconds (read-only, no save)
-            useEffect(()=>{if(currentUser?.role!=='user')return;const poll=setInterval(async()=>{try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};updateData(data,true)}}catch(e){}},15000);return()=>clearInterval(poll)},[currentUser]);
+            useEffect(()=>{if(currentUser?.role!=='user')return;const poll=setInterval(async()=>{if(window._savingUntil&&Date.now()<window._savingUntil)return;try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};updateData(data,true)}}catch(e){}},15000);return()=>clearInterval(poll)},[currentUser]);
             
             // Memory State
             const[memoryCards,setMemoryCards]=useState([]);
