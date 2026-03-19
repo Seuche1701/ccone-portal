@@ -197,7 +197,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.7.8';
+        const APP_VERSION = '5.7.9';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -1292,7 +1292,7 @@ function getOrCreateSheet(){
                     <div className="flex-1 ml-60 overflow-auto p-6 relative z-10">
                         {activeTab==='overview'&&<OverviewTab stats={stats} results={results} data={appData} exportResults={exportResults}/>}
                         {activeTab==='users'&&<UsersTab users={appData.users} onAdd={addUser} onDelete={deleteUser} onUpdate={updateUser}/>}
-                        {activeTab==='quizzes'&&<QuizzesTab quizzes={appData.quizzes} onAdd={addQuiz} onEdit={setEditingQuiz} onDelete={deleteQuiz}/>}
+                        {activeTab==='quizzes'&&<QuizzesTab quizzes={appData.quizzes} onAdd={addQuiz} onEdit={setEditingQuiz} onDelete={deleteQuiz} appData={appData} updateData={updateData} showNotification={showNotification}/>}
                         {activeTab==='assignments'&&<AssignmentsTab appData={appData} updateData={updateData} showNotification={showNotification}/>}
                         {activeTab==='results'&&<ResultsTab results={results} data={appData} exportResults={exportResults} updateData={updateData} appData={appData} showNotification={showNotification}/>}
                         <div style={{display:activeTab==='coaching'?'block':'none'}}><CoachingTab appData={appData} updateData={updateData} showNotification={showNotification}/></div>
@@ -2058,8 +2058,12 @@ function getOrCreateSheet(){
             const getConfig=()=>{const saved=appData.rewardsConfig||{};const merged={...DEFAULT_CONFIG,...saved,gameTypes:{...DEFAULT_CONFIG.gameTypes,...(saved.gameTypes||{})},shopItems:{...DEFAULT_CONFIG.shopItems,...(saved.shopItems||{})},freePlay:{...DEFAULT_CONFIG.freePlay,...(saved.freePlay||{})}};Object.keys(DEFAULT_CONFIG.gameTypes).forEach(k=>{merged.gameTypes[k]={...DEFAULT_CONFIG.gameTypes[k],...(saved.gameTypes||{})[k]||{}}});Object.keys(DEFAULT_CONFIG.shopItems).forEach(k=>{merged.shopItems[k]={...DEFAULT_CONFIG.shopItems[k],...(saved.shopItems||{})[k]||{}}});return merged};
             const[config,setConfig]=useState(getConfig());
             const[hasChanges,setHasChanges]=useState(false);
-            const updateConfig=(newCfg)=>{setConfig(newCfg);setHasChanges(true)};
-            const saveConfig=async()=>{await updateData({...appData,rewardsConfig:config});setHasChanges(false);showNotification('Belohnungssystem gespeichert!')};
+            const saveTimerRef=useRef(null);
+            const updateConfig=(newCfg)=>{setConfig(newCfg);setHasChanges(true);
+                if(saveTimerRef.current)clearTimeout(saveTimerRef.current);
+                saveTimerRef.current=setTimeout(()=>{updateData({...appData,rewardsConfig:newCfg});setHasChanges(false);showNotification('Belohnungssystem gespeichert!')},1500);
+            };
+            const saveConfig=async()=>{if(saveTimerRef.current)clearTimeout(saveTimerRef.current);await updateData({...appData,rewardsConfig:config});setHasChanges(false);showNotification('Belohnungssystem gespeichert!')};
             const resetConfig=()=>{setConfig(getConfig());setHasChanges(false)};
             const setGameField=(type,field,value)=>{updateConfig({...config,gameTypes:{...config.gameTypes,[type]:{...config.gameTypes[type],[field]:value}}})};
             const setShopField=(type,field,value)=>{updateConfig({...config,shopItems:{...config.shopItems,[type]:{...(config.shopItems||{})[type],[field]:value}}})};
@@ -2412,8 +2416,8 @@ function getOrCreateSheet(){
             const[migrationProgress,setMigrationProgress]=useState(0);
             const[showConfirm,setShowConfirm]=useState(false);
             const[verified,setVerified]=useState(false);
-            const KNOWN_LABELS={users:'👥 Benutzer',quizzes:'🧠 Quizze',assignments:'🎯 Zuweisungen',results:'🏆 Ergebnisse',coachingSessions:'💬 Coaching',agents:'🤖 Agenten',absences:'📅 Abwesenheit',customKeywords:'🔑 Keywords',projects:'📁 Projekte',customTemplates:'📋 Templates',unoGames:'🎮 UNO',pokerGames:'🃏 Poker',memoryImages:'🖼️ Memory Bilder',driveUrls:'🔗 Drive URLs',monopolyGames:'🏠 Monopoly',rewardsPoints:'🏆 Belohnungen',rewardsHistory:'📊 Belohnungs-History',rewardsConfig:'⚙️ Belohnungs-Config',rewardsPurchases:'🛒 Shop-Käufe',termine:'📅 Termine',termineConfig:'📅 Termin-Config',news:'📰 News',pausenConfig:'☕ Pausen-Config',pausenAwards:'🎁 Pausen-Vergaben',trainingMaterials:'📚 Training',trainingMode:'📚 Trainings-Modus',spaetschicht:'🌙 Spätschicht',wheelTournaments:'🏆 Turniere',onlineUsers:'🟢 Online-User',agentMessages:'💬 Agent-Nachrichten'};
-            const KNOWN_COLORS={users:'#10b981',quizzes:'#3b82f6',assignments:'#06b6d4',results:'#f59e0b',coachingSessions:'#8b5cf6',agents:'#64748b',absences:'#ec4899',customKeywords:'#14b8a6',projects:'#a855f7',customTemplates:'#8b5cf6',unoGames:'#ef4444',pokerGames:'#d97706',memoryImages:'#ec4899',driveUrls:'#06b6d4',monopolyGames:'#059669',rewardsPoints:'#d4af37',rewardsHistory:'#f59e0b',rewardsConfig:'#94a3b8',rewardsPurchases:'#d97706',termine:'#3b82f6',termineConfig:'#3b82f6',news:'#8b5cf6',pausenConfig:'#f97316',pausenAwards:'#ec4899',trainingMaterials:'#7c3aed',trainingMode:'#7c3aed',spaetschicht:'#6366f1',wheelTournaments:'#d4af37',onlineUsers:'#22c55e',agentMessages:'#06b6d4'};
+            const KNOWN_LABELS={users:'👥 Benutzer',quizzes:'🧠 Quizze',assignments:'🎯 Zuweisungen',results:'🏆 Ergebnisse',coachingSessions:'💬 Coaching',agents:'🤖 Agenten',absences:'📅 Abwesenheit',customKeywords:'🔑 Keywords',projects:'📁 Projekte',customTemplates:'📋 Templates',unoGames:'🎮 UNO',pokerGames:'🃏 Poker',memoryImages:'🖼️ Memory Bilder',driveUrls:'🔗 Drive URLs',monopolyGames:'🏠 Monopoly',rewardsPoints:'🏆 Belohnungen',rewardsHistory:'📊 Belohnungs-History',rewardsConfig:'⚙️ Belohnungs-Config',rewardsPurchases:'🛒 Shop-Käufe',termine:'📅 Termine',termineConfig:'📅 Termin-Config',news:'📰 News',pausenConfig:'☕ Pausen-Config',pausenAwards:'🎁 Pausen-Vergaben',trainingMaterials:'📚 Training',trainingMode:'📚 Trainings-Modus',spaetschicht:'🌙 Spätschicht',wheelTournaments:'🏆 Turniere',onlineUsers:'🟢 Online-User',agentMessages:'💬 Agent-Nachrichten',quizAutoDeleteAgents:'👥 Pflicht-Agenten'};
+            const KNOWN_COLORS={users:'#10b981',quizzes:'#3b82f6',assignments:'#06b6d4',results:'#f59e0b',coachingSessions:'#8b5cf6',agents:'#64748b',absences:'#ec4899',customKeywords:'#14b8a6',projects:'#a855f7',customTemplates:'#8b5cf6',unoGames:'#ef4444',pokerGames:'#d97706',memoryImages:'#ec4899',driveUrls:'#06b6d4',monopolyGames:'#059669',rewardsPoints:'#d4af37',rewardsHistory:'#f59e0b',rewardsConfig:'#94a3b8',rewardsPurchases:'#d97706',termine:'#3b82f6',termineConfig:'#3b82f6',news:'#8b5cf6',pausenConfig:'#f97316',pausenAwards:'#ec4899',trainingMaterials:'#7c3aed',trainingMode:'#7c3aed',spaetschicht:'#6366f1',wheelTournaments:'#d4af37',onlineUsers:'#22c55e',agentMessages:'#06b6d4',quizAutoDeleteAgents:'#64748b'};
             // Skip meta keys that don't need separate storage
             const SKIP_KEYS=['storageConfig'];
             // Auto-detect ALL keys from appData
@@ -2514,14 +2518,16 @@ function getOrCreateSheet(){
             // Migration progress view
             // Migration progress view
             if(migrating||migrationLog.length>0)return(
-                <div className="animate-fade-in" style={{minHeight:'calc(100vh - 200px)'}}>
-                    <h2 className="text-2xl font-bold text-white mb-6">{'\ud83d\udce6'} Migration</h2>
-                    <div className="glass-card rounded-xl p-6 mb-6">
-                        <div className="flex justify-between items-center mb-3"><span className="text-base font-bold text-white">Fortschritt</span><span className="text-lg font-black" style={{color:migrationProgress>=100?'#10b981':'#d4af37'}}>{migrationProgress}%</span></div>
-                        <div className="h-4 rounded-full overflow-hidden mb-4" style={{background:'rgba(255,255,255,0.06)'}}><div className="h-full rounded-full transition-all duration-500" style={{width:migrationProgress+'%',background:migrationProgress>=100?'linear-gradient(90deg,#10b981,#059669)':'linear-gradient(90deg,#d4af37,#b8860b)'}}/></div>
-                        <div className="space-y-2" style={{maxHeight:'calc(100vh - 400px)',overflowY:'auto',scrollbarWidth:'thin'}}>{migrationLog.map((l,i)=>(<div key={i} className="flex items-center gap-3 py-2 px-3 rounded-lg" style={{background:l.status==='error'?'rgba(239,68,68,0.08)':l.status==='warn'?'rgba(245,158,11,0.08)':l.status==='running'?'rgba(212,175,55,0.04)':'rgba(16,185,129,0.04)'}}>{l.status==='running'&&<div className="w-4 h-4 border-2 border-yellow-500/40 border-t-yellow-400 rounded-full animate-spin flex-shrink-0"/>}{l.status==='done'&&<span className="text-green-400 text-sm">{'✓'}</span>}{l.status==='error'&&<span className="text-red-400 text-sm">{'✗'}</span>}{l.status==='warn'&&<span className="text-yellow-400 text-sm">{'\u26a0'}</span>}<span className="text-sm text-slate-300">{l.msg}</span></div>))}</div>
+                <div className="animate-fade-in">
+                    <div className="flex items-center justify-between mb-3">
+                        <h2 className="text-lg font-bold text-white">📦 Migration</h2>
+                        <span className="text-lg font-black" style={{color:migrationProgress>=100?'#10b981':'#d4af37'}}>{migrationProgress}%</span>
                     </div>
-                    {!migrating&&<div className="flex gap-3">{verified&&<div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{background:'rgba(16,185,129,0.08)',border:'1px solid rgba(16,185,129,0.2)'}}><span className="text-green-400 text-sm font-bold">{'\u2705'} Verifiziert</span></div>}<button onClick={()=>{setMigrationLog([]);setMigrationProgress(0)}} className="px-6 py-2 rounded-lg font-bold text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#2563eb)',color:'#fff'}}>Zur{'\u00fc'}ck</button></div>}
+                    <div className="h-3 rounded-full overflow-hidden mb-4" style={{background:'rgba(255,255,255,0.06)'}}><div className="h-full rounded-full transition-all duration-500" style={{width:migrationProgress+'%',background:migrationProgress>=100?'linear-gradient(90deg,#10b981,#059669)':'linear-gradient(90deg,#d4af37,#b8860b)'}}/></div>
+                    <div className="glass-card rounded-xl p-4 mb-4">
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4px 16px'}}>{migrationLog.map((l,i)=>(<div key={i} className="flex items-center gap-2 py-1 px-2 rounded" style={{background:l.status==='error'?'rgba(239,68,68,0.08)':l.status==='warn'?'rgba(245,158,11,0.08)':l.status==='running'?'rgba(212,175,55,0.04)':'rgba(16,185,129,0.04)'}}>{l.status==='running'&&<div className="w-3 h-3 border-2 border-yellow-500/40 border-t-yellow-400 rounded-full animate-spin flex-shrink-0"/>}{l.status==='done'&&<span className="text-green-400" style={{fontSize:11}}>✓</span>}{l.status==='error'&&<span className="text-red-400" style={{fontSize:11}}>✗</span>}{l.status==='warn'&&<span className="text-yellow-400" style={{fontSize:11}}>⚠</span>}<span className="text-slate-300 truncate" style={{fontSize:12}}>{l.msg}</span></div>))}</div>
+                    </div>
+                    {!migrating&&<div className="flex gap-3">{verified&&<div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{background:'rgba(16,185,129,0.08)',border:'1px solid rgba(16,185,129,0.2)'}}><span className="text-green-400 text-sm font-bold">✅ Verifiziert</span></div>}<button onClick={()=>{setMigrationLog([]);setMigrationProgress(0)}} className="px-6 py-2 rounded-lg font-bold text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#2563eb)',color:'#fff'}}>Zurück</button></div>}
                 </div>
             );
 
@@ -2721,7 +2727,127 @@ function getOrCreateSheet(){
                 </div>
             </div>)}
 
-        function QuizzesTab({quizzes,onAdd,onEdit,onDelete}){const[showForm,setShowForm]=useState(false);const[form,setForm]=useState({title:'',project:'EKD',type:'quiz'});const[filter,setFilter]=useState('all');const handleSubmit=()=>{if(!form.title)return;onAdd({...form,questions:[],memoryCards:[],crosswordWords:[],wheelSegments:[],monopolyBoard:[],sudokuDifficulty:'easy',chessEnabled:true});setForm({title:'',project:'EKD',type:'quiz'});setShowForm(false)};const typeLabels={quiz:'📝 Quiz',memory:'🧠 Memory',sudoku:'🔢 Sudoku',chess:'♟️ Schach',crossword:'✏️ Kreuzworträtsel',uno:'🎮 UNO',poker:'🃏 Poker',wheel:'🎡 Glücksrad',monopoly:'🏠 Monopoly',pvinstaller:'☀️ PV-Konfigurator',millionaire:'💎 Wer ist CCONE'};const typeColors={quiz:'#3b82f6',memory:'#8b5cf6',sudoku:'#f59e0b',chess:'#64748b',crossword:'#ec4899',uno:'#ef4444',poker:'#d97706',wheel:'#f97316',monopoly:'#10b981',pvinstaller:'#f97316',millionaire:'#1e40af'};const filtered=filter==='all'?quizzes:quizzes.filter(q=>q.type===filter);const typeCounts={};quizzes.forEach(q=>{typeCounts[q.type]=(typeCounts[q.type]||0)+1});return(<div className="animate-fade-in"><div className="flex justify-between items-center mb-4"><div><h2 className="text-xl font-bold text-white">🌍 Lernwelt</h2><p className="text-xs text-slate-500">{quizzes.length} erstellt</p></div><button onClick={()=>setShowForm(!showForm)} className="px-3 py-1.5 rounded-lg font-bold text-sm flex items-center gap-1" style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff'}}><Icon name="plus" size={14}/>{showForm?'Schließen':'Neu'}</button></div>{showForm&&(<div className="glass-card rounded-xl p-4 mb-4 animate-fade-in"><div className="flex gap-2 flex-wrap"><input value={form.title} onChange={(e)=>setForm({...form,title:e.target.value})} className="flex-1 min-w-0 px-3 py-1.5 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-sm placeholder-slate-500" placeholder="Titel"/><select value={form.project} onChange={(e)=>setForm({...form,project:e.target.value})} className="px-2 py-1.5 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-sm"><option value="EKD">EKD</option><option value="VNR">VNR</option></select><select value={form.type} onChange={(e)=>setForm({...form,type:e.target.value})} className="px-2 py-1.5 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-sm"><optgroup label="Lernspiele"><option value="quiz">📝 Quiz</option><option value="memory">🧠 Memory</option><option value="crossword">✏️ Kreuzworträtsel</option><option value="wheel">🎡 Glücksrad</option></optgroup><optgroup label="Spiele"><option value="monopoly">🏠 Monopoly</option><option value="sudoku">🔢 Sudoku</option><option value="chess">♟️ Schach</option><option value="uno">🎮 UNO</option><option value="poker">🃏 Poker</option><option value="pvinstaller">☀️ PV-Konfigurator</option><option value="millionaire">💎 Wer ist CCONE</option></optgroup></select><button onClick={handleSubmit} className="px-4 py-1.5 rounded-lg font-bold text-sm" style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff'}}>Erstellen</button></div></div>)}<div className="flex gap-1 mb-3 flex-wrap"><button onClick={()=>setFilter('all')} className="px-2 py-0.5 rounded text-xs font-medium" style={{background:filter==='all'?'rgba(16,185,129,0.2)':'rgba(255,255,255,0.03)',color:filter==='all'?'#34d399':'#666',border:'1px solid '+(filter==='all'?'rgba(16,185,129,0.4)':'rgba(255,255,255,0.06)')}}>Alle ({quizzes.length})</button>{Object.entries(typeCounts).map(([t,c])=>(<button key={t} onClick={()=>setFilter(t)} className="px-2 py-0.5 rounded text-xs font-medium" style={{background:filter===t?(typeColors[t]||'#666')+'25':'rgba(255,255,255,0.03)',color:filter===t?typeColors[t]||'#888':'#666',border:'1px solid '+(filter===t?(typeColors[t]||'#666')+'50':'rgba(255,255,255,0.06)')}}>{typeLabels[t]?.split(' ')[0]||'📝'} {c}</button>))}</div><div className="glass-card rounded-xl overflow-hidden"><table className="w-full text-sm"><thead><tr style={{borderBottom:'1px solid rgba(255,255,255,0.08)'}}><th className="text-left text-xs text-slate-500 px-3 py-2">Typ</th><th className="text-left text-xs text-slate-500 px-3 py-2">Titel</th><th className="text-left text-xs text-slate-500 px-3 py-2">Projekt</th><th className="text-left text-xs text-slate-500 px-3 py-2">Inhalt</th><th className="text-right text-xs text-slate-500 px-3 py-2">Aktion</th></tr></thead><tbody>{filtered.map(quiz=>{const info=quiz.type==='memory'?(quiz.memoryCards?.length||0)+' Paare':quiz.type==='sudoku'?(quiz.sudokuDifficulty==='easy'?'Leicht':quiz.sudokuDifficulty==='medium'?'Mittel':'Schwer'):quiz.type==='chess'?'Klassisch':quiz.type==='crossword'?(quiz.crosswordWords?.length||0)+' Wörter':quiz.type==='uno'?'2-4 Spieler':quiz.type==='poker'?"Hold'em":quiz.type==='wheel'?(quiz.wheelSegments?.length||0)+' Begriffe':quiz.type==='monopoly'?'2-16 Spieler':quiz.type==='millionaire'?(quiz.questions?.length||0)+' Fragen ('+(quiz.questionCount||15)+' benoetigt)':quiz.type==='pvinstaller'?'Drag & Drop':(quiz.questions?.length||0)+' Fragen';return(<tr key={quiz.id} className="hover:bg-white/5 transition-colors" style={{borderBottom:'1px solid rgba(255,255,255,0.03)'}}><td className="px-3 py-2"><span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{background:(typeColors[quiz.type]||'#666')+'20',color:typeColors[quiz.type]||'#888'}}>{typeLabels[quiz.type]||'📝 Quiz'}</span></td><td className="px-3 py-2 text-white font-medium">{quiz.title}</td><td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${quiz.project==='EKD'?'bg-emerald-900/30 text-emerald-300':'bg-teal-900/30 text-teal-300'}`}>{quiz.project}</span></td><td className="px-3 py-2 text-slate-500 text-xs">{info}</td><td className="px-3 py-2 text-right"><div className="flex justify-end gap-1"><button onClick={()=>onEdit(quiz)} className="p-1 rounded hover:bg-white/5 text-slate-400 hover:text-emerald-400"><Icon name="edit" size={14}/></button><button onClick={()=>onDelete(quiz.id)} className="p-1 rounded hover:bg-white/5 text-slate-400 hover:text-red-400"><Icon name="trash" size={14}/></button></div></td></tr>)})}{filtered.length===0&&<tr><td colSpan={5} className="px-3 py-8 text-center text-slate-500 text-xs">Noch keine Spiele erstellt</td></tr>}</tbody></table></div></div>)}
+        function QuizzesTab({quizzes,onAdd,onEdit,onDelete,appData,updateData,showNotification}){
+            const[showForm,setShowForm]=useState(false);
+            const[form,setForm]=useState({title:'',project:'EKD',type:'quiz'});
+            const[filter,setFilter]=useState('all');
+            const handleSubmit=()=>{if(!form.title)return;onAdd({...form,questions:[],memoryCards:[],crosswordWords:[],wheelSegments:[],monopolyBoard:[],sudokuDifficulty:'easy',chessEnabled:true});setForm({title:'',project:'EKD',type:'quiz'});setShowForm(false)};
+            const typeLabels={quiz:'📝 Quiz',memory:'🧠 Memory',sudoku:'🔢 Sudoku',chess:'♟️ Schach',crossword:'✏️ Kreuzworträtsel',uno:'🎮 UNO',poker:'🃏 Poker',wheel:'🎡 Glücksrad',monopoly:'🏠 Monopoly',pvinstaller:'☀️ PV-Konfigurator',millionaire:'💎 Wer ist CCONE'};
+            const typeColors={quiz:'#3b82f6',memory:'#8b5cf6',sudoku:'#f59e0b',chess:'#64748b',crossword:'#ec4899',uno:'#ef4444',poker:'#d97706',wheel:'#f97316',monopoly:'#10b981',pvinstaller:'#f97316',millionaire:'#1e40af'};
+            const filtered=filter==='all'?quizzes:quizzes.filter(q=>q.type===filter);
+            const typeCounts={};quizzes.forEach(q=>{typeCounts[q.type]=(typeCounts[q.type]||0)+1});
+            const allAgents=(appData?.users||[]).filter(u=>u.role==='user');
+            const results=appData?.results||[];
+            const requiredAgentIds=appData?.quizAutoDeleteAgents||[];
+            const trackedAgents=requiredAgentIds.length>0?allAgents.filter(a=>requiredAgentIds.includes(a.id)):allAgents;
+            const trackedCount=trackedAgents.length;
+            const[showAgentPicker,setShowAgentPicker]=useState(false);
+            const toggleRequiredAgent=(uid)=>{
+                const cur=appData?.quizAutoDeleteAgents||[];
+                const next=cur.includes(uid)?cur.filter(id=>id!==uid):[...cur,uid];
+                updateData({...appData,quizAutoDeleteAgents:next});
+            };
+            const selectAllAgents=()=>updateData({...appData,quizAutoDeleteAgents:allAgents.map(a=>a.id)});
+            const clearAllAgents=()=>updateData({...appData,quizAutoDeleteAgents:[]});
+            const getQuizStats=(quizId)=>{
+                const qResults=results.filter(r=>r.quizId===quizId);
+                const completedUsers=[...new Set(qResults.map(r=>r.userId))];
+                const completedTracked=trackedAgents.filter(a=>completedUsers.includes(a.id)).length;
+                return{completed:completedTracked,total:trackedCount,pct:trackedCount>0?Math.round(completedTracked/trackedCount*100):0};
+            };
+            const toggleKeep=(quizId)=>{
+                const updated=quizzes.map(q=>q.id===quizId?{...q,keepWhenDone:!q.keepWhenDone}:q);
+                updateData({...appData,quizzes:updated});
+            };
+            // Auto-delete check: if 100% of required agents done and not keepWhenDone
+            useEffect(()=>{
+                if(!appData||trackedCount===0)return;
+                const toDelete=quizzes.filter(q=>{
+                    if(q.keepWhenDone)return false;
+                    const stats=getQuizStats(q.id);
+                    return stats.pct>=100;
+                });
+                if(toDelete.length>0){
+                    const remaining=quizzes.filter(q=>!toDelete.some(d=>d.id===q.id));
+                    const deletedNames=toDelete.map(q=>q.title).join(', ');
+                    updateData({...appData,quizzes:remaining});
+                    showNotification('🗑️ Auto-gelöscht (100% abgeschlossen): '+deletedNames);
+                }
+            },[results.length]);
+            return(<div className="animate-fade-in">
+                <div className="flex justify-between items-center mb-4">
+                    <div><h2 className="text-xl font-bold text-white">🌍 Lernwelt</h2><p className="text-xs text-slate-500">{quizzes.length} erstellt · Fortschritt trackt {trackedCount} von {allAgents.length} Agenten</p></div>
+                    <div className="flex gap-2">
+                        <button onClick={()=>setShowAgentPicker(!showAgentPicker)} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" style={{background:showAgentPicker?'rgba(59,130,246,0.2)':'rgba(255,255,255,0.04)',border:'1px solid '+(showAgentPicker?'rgba(59,130,246,0.4)':'rgba(255,255,255,0.08)'),color:showAgentPicker?'#60a5fa':'#888'}}>👥 Pflicht-Agenten ({requiredAgentIds.length||'alle'})</button>
+                        <button onClick={()=>setShowForm(!showForm)} className="px-3 py-1.5 rounded-lg font-bold text-sm flex items-center gap-1" style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff'}}><Icon name="plus" size={14}/>{showForm?'Schließen':'Neu'}</button>
+                    </div>
+                </div>
+                {showAgentPicker&&(
+                    <div className="glass-card rounded-xl p-4 mb-4 animate-fade-in" style={{border:'1.5px solid rgba(59,130,246,0.2)'}}>
+                        <div className="flex items-center justify-between mb-3">
+                            <div>
+                                <h3 className="text-sm font-bold text-white">👥 Pflicht-Agenten für Auto-Löschung</h3>
+                                <p className="text-xs text-slate-500">Nur diese Agenten müssen ein Spiel abschließen, damit es als 100% gilt und auto-gelöscht wird. Keine Auswahl = alle Agenten.</p>
+                            </div>
+                            <div className="flex gap-1">
+                                <button onClick={selectAllAgents} className="px-2 py-1 rounded text-xs" style={{background:'rgba(16,185,129,0.1)',color:'#6ee7b7'}}>Alle</button>
+                                <button onClick={clearAllAgents} className="px-2 py-1 rounded text-xs" style={{background:'rgba(239,68,68,0.1)',color:'#fca5a5'}}>Keine</button>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">{allAgents.map(a=>{
+                            const sel=requiredAgentIds.includes(a.id);
+                            return(<button key={a.id} onClick={()=>toggleRequiredAgent(a.id)} className="px-2.5 py-1 rounded-lg text-xs font-medium transition-all" style={{background:sel?'rgba(59,130,246,0.15)':'rgba(255,255,255,0.03)',border:'1px solid '+(sel?'rgba(59,130,246,0.4)':'rgba(255,255,255,0.06)'),color:sel?'#93c5fd':'#666'}}>{sel?'✓ ':''}{a.name}</button>);
+                        })}</div>
+                        {requiredAgentIds.length>0&&<p className="text-xs text-blue-400 mt-2">✓ {requiredAgentIds.length} Agenten ausgewählt — Fortschritt und Auto-Löschung basiert nur auf diesen.</p>}
+                        {requiredAgentIds.length===0&&<p className="text-xs text-slate-500 mt-2">Keine Auswahl — alle {allAgents.length} Agenten werden getrackt.</p>}
+                    </div>
+                )}
+                {showForm&&(<div className="glass-card rounded-xl p-4 mb-4 animate-fade-in"><div className="flex gap-2 flex-wrap">
+                    <input value={form.title} onChange={(e)=>setForm({...form,title:e.target.value})} className="flex-1 min-w-0 px-3 py-1.5 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-sm placeholder-slate-500" placeholder="Titel"/>
+                    <select value={form.project} onChange={(e)=>setForm({...form,project:e.target.value})} className="px-2 py-1.5 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-sm"><option value="EKD">EKD</option><option value="VNR">VNR</option></select>
+                    <select value={form.type} onChange={(e)=>setForm({...form,type:e.target.value})} className="px-2 py-1.5 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-sm"><optgroup label="Lernspiele"><option value="quiz">📝 Quiz</option><option value="memory">🧠 Memory</option><option value="crossword">✏️ Kreuzworträtsel</option><option value="wheel">🎡 Glücksrad</option></optgroup><optgroup label="Spiele"><option value="monopoly">🏠 Monopoly</option><option value="sudoku">🔢 Sudoku</option><option value="chess">♟️ Schach</option><option value="uno">🎮 UNO</option><option value="poker">🃏 Poker</option><option value="pvinstaller">☀️ PV-Konfigurator</option><option value="millionaire">💎 Wer ist CCONE</option></optgroup></select>
+                    <button onClick={handleSubmit} className="px-4 py-1.5 rounded-lg font-bold text-sm" style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff'}}>Erstellen</button>
+                </div></div>)}
+                <div className="flex gap-1 mb-3 flex-wrap">
+                    <button onClick={()=>setFilter('all')} className="px-2 py-0.5 rounded text-xs font-medium" style={{background:filter==='all'?'rgba(16,185,129,0.2)':'rgba(255,255,255,0.03)',color:filter==='all'?'#34d399':'#666',border:'1px solid '+(filter==='all'?'rgba(16,185,129,0.4)':'rgba(255,255,255,0.06)')}}>Alle ({quizzes.length})</button>
+                    {Object.entries(typeCounts).map(([t,c])=>(<button key={t} onClick={()=>setFilter(t)} className="px-2 py-0.5 rounded text-xs font-medium" style={{background:filter===t?(typeColors[t]||'#666')+'25':'rgba(255,255,255,0.03)',color:filter===t?typeColors[t]||'#888':'#666',border:'1px solid '+(filter===t?(typeColors[t]||'#666')+'50':'rgba(255,255,255,0.06)')}}>{typeLabels[t]?.split(' ')[0]||'📝'} {c}</button>))}
+                </div>
+                <div className="glass-card rounded-xl overflow-hidden"><table className="w-full text-sm"><thead><tr style={{borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+                    <th className="text-left text-xs text-slate-500 px-3 py-2">Typ</th>
+                    <th className="text-left text-xs text-slate-500 px-3 py-2">Titel</th>
+                    <th className="text-left text-xs text-slate-500 px-3 py-2">Projekt</th>
+                    <th className="text-left text-xs text-slate-500 px-3 py-2">Inhalt</th>
+                    <th className="text-left text-xs text-slate-500 px-3 py-2">Fortschritt</th>
+                    <th className="text-center text-xs text-slate-500 px-3 py-2" title="Behalten wenn 100%">🔒</th>
+                    <th className="text-right text-xs text-slate-500 px-3 py-2">Aktion</th>
+                </tr></thead><tbody>{filtered.map(quiz=>{
+                    const info=quiz.type==='memory'?(quiz.memoryCards?.length||0)+' Paare':quiz.type==='sudoku'?(quiz.sudokuDifficulty==='easy'?'Leicht':quiz.sudokuDifficulty==='medium'?'Mittel':'Schwer'):quiz.type==='chess'?'Klassisch':quiz.type==='crossword'?(quiz.crosswordWords?.length||0)+' Wörter':quiz.type==='uno'?'2-4 Spieler':quiz.type==='poker'?"Hold'em":quiz.type==='wheel'?(quiz.wheelSegments?.length||0)+' Begriffe':quiz.type==='monopoly'?'2-16 Spieler':quiz.type==='millionaire'?(quiz.questions?.length||0)+' Fragen ('+(quiz.questionCount||15)+' benötigt)':quiz.type==='pvinstaller'?'Drag & Drop':(quiz.questions?.length||0)+' Fragen';
+                    const stats=getQuizStats(quiz.id);
+                    const barColor=stats.pct>=100?'#10b981':stats.pct>=50?'#f59e0b':'#3b82f6';
+                    return(<tr key={quiz.id} className="hover:bg-white/5 transition-colors" style={{borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                        <td className="px-3 py-2"><span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{background:(typeColors[quiz.type]||'#666')+'20',color:typeColors[quiz.type]||'#888'}}>{typeLabels[quiz.type]||'📝 Quiz'}</span></td>
+                        <td className="px-3 py-2 text-white font-medium">{quiz.title}</td>
+                        <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${quiz.project==='EKD'?'bg-emerald-900/30 text-emerald-300':'bg-teal-900/30 text-teal-300'}`}>{quiz.project}</span></td>
+                        <td className="px-3 py-2 text-slate-500 text-xs">{info}</td>
+                        <td className="px-3 py-2" style={{minWidth:120}}>
+                            <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.06)'}}>
+                                    <div className="h-full rounded-full transition-all" style={{width:stats.pct+'%',background:barColor}}/>
+                                </div>
+                                <span className="text-xs font-bold" style={{color:barColor,minWidth:42,textAlign:'right'}}>{stats.completed}/{stats.total}</span>
+                            </div>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                            <div onClick={()=>toggleKeep(quiz.id)} style={{width:28,height:16,borderRadius:8,background:quiz.keepWhenDone?'#10b981':'#444',transition:'background 0.3s',cursor:'pointer',position:'relative',margin:'0 auto'}} title={quiz.keepWhenDone?'Wird behalten bei 100%':'Auto-Löschen bei 100%'}>
+                                <div style={{width:12,height:12,borderRadius:6,background:'#fff',position:'absolute',top:2,left:quiz.keepWhenDone?14:2,transition:'left 0.3s',boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}/>
+                            </div>
+                        </td>
+                        <td className="px-3 py-2 text-right"><div className="flex justify-end gap-1">
+                            <button onClick={()=>onEdit(quiz)} className="p-1 rounded hover:bg-white/5 text-slate-400 hover:text-emerald-400"><Icon name="edit" size={14}/></button>
+                            <button onClick={()=>onDelete(quiz.id)} className="p-1 rounded hover:bg-white/5 text-slate-400 hover:text-red-400"><Icon name="trash" size={14}/></button>
+                        </div></td>
+                    </tr>)})}{filtered.length===0&&<tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500 text-xs">Noch keine Spiele erstellt</td></tr>}</tbody></table></div>
+            </div>)}
 
 
         function AssignmentsTab({appData,updateData,showNotification}){
@@ -6894,6 +7020,10 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
         function WheelEditor({quiz,onSave,onCancel,showNotification}){
             const[editingQuiz,setEditingQuiz]=useState({...quiz,wheelSegments:quiz.wheelSegments||[]});
             const[newPhrase,setNewPhrase]=useState({phrase:'',category:'Allgemein',hint:''});
+            const[editingPhraseId,setEditingPhraseId]=useState(null);
+            const updatePhrase=(id,field,value)=>{
+                setEditingQuiz({...editingQuiz,wheelSegments:editingQuiz.wheelSegments.map(s=>s.id===id?{...s,[field]:field==='phrase'?value.toUpperCase():value}:s)});
+            };
             const[apiKey,setApiKey]=useState(localStorage.getItem('groq-api-key')||'');
             const[aiLoading,setAiLoading]=useState(false);
             const[showAI,setShowAI]=useState(false);
@@ -6963,13 +7093,29 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                     </div>
                     <div className="glass-card rounded-2xl p-6 mb-6">
                         <h3 className="font-semibold text-white mb-4">Begriffe ({editingQuiz.wheelSegments.length})</h3>
-                        {editingQuiz.wheelSegments.length===0?(<p className="text-slate-500 text-center py-8">Noch keine Begriffe. Füge oben Begriffe hinzu oder nutze den KI-Generator!</p>):(<div className="space-y-2">{editingQuiz.wheelSegments.map((s,idx)=>(<div key={s.id} className="flex items-center gap-4 p-3 rounded-xl" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
-                            <span className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)'}}>{idx+1}</span>
-                            <div className="flex-1 min-w-0">
-                                <p className="font-bold text-white tracking-widest">{s.phrase}</p>
-                                <div className="flex gap-2 mt-1"><span className="text-xs px-2 py-0.5 rounded-full" style={{background:'rgba(212,175,55,0.15)',color:'#d4af37'}}>{s.category}</span>{s.hint&&<span className="text-xs text-slate-500">💡 {s.hint}</span>}</div>
+                        {editingQuiz.wheelSegments.length===0?(<p className="text-slate-500 text-center py-8">Noch keine Begriffe. Füge oben Begriffe hinzu oder nutze den KI-Generator!</p>):(<div className="space-y-2">{editingQuiz.wheelSegments.map((s,idx)=>(<div key={s.id} className="flex items-center gap-3 p-3 rounded-xl" style={{background:editingPhraseId===s.id?'rgba(59,130,246,0.06)':'rgba(255,255,255,0.04)',border:'1px solid '+(editingPhraseId===s.id?'rgba(59,130,246,0.3)':'rgba(255,255,255,0.08)')}}>
+                            <span className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)'}}>{idx+1}</span>
+                            {editingPhraseId===s.id?(
+                                <div className="flex-1 space-y-2">
+                                    <input value={s.phrase} onChange={e=>updatePhrase(s.id,'phrase',e.target.value)} className="w-full px-3 py-1.5 rounded-lg border border-blue-500/40 bg-slate-800/80 text-white font-bold tracking-widest text-sm" autoFocus/>
+                                    <div className="flex gap-2">
+                                        <select value={s.category} onChange={e=>updatePhrase(s.id,'category',e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs">
+                                            <option>Allgemein</option><option>Energie</option><option>Technik</option><option>Natur</option><option>Beruf</option><option>Unterhaltung</option><option>Sport</option>
+                                        </select>
+                                        <input value={s.hint||''} onChange={e=>updatePhrase(s.id,'hint',e.target.value)} className="flex-1 px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs" placeholder="Hinweis..."/>
+                                        <button onClick={()=>setEditingPhraseId(null)} className="px-3 py-1 rounded-lg text-xs font-bold" style={{background:'rgba(16,185,129,0.15)',color:'#6ee7b7',border:'1px solid rgba(16,185,129,0.3)'}}>✓ Fertig</button>
+                                    </div>
+                                </div>
+                            ):(
+                                <div className="flex-1 min-w-0 cursor-pointer" onClick={()=>setEditingPhraseId(s.id)} title="Klicken zum Bearbeiten">
+                                    <p className="font-bold text-white tracking-widest">{s.phrase}</p>
+                                    <div className="flex gap-2 mt-1"><span className="text-xs px-2 py-0.5 rounded-full" style={{background:'rgba(212,175,55,0.15)',color:'#d4af37'}}>{s.category}</span>{s.hint&&<span className="text-xs text-slate-500">💡 {s.hint}</span>}</div>
+                                </div>
+                            )}
+                            <div className="flex gap-1 flex-shrink-0">
+                                {editingPhraseId!==s.id&&<button onClick={()=>setEditingPhraseId(s.id)} className="text-slate-500 hover:text-blue-400"><Icon name="edit" size={16}/></button>}
+                                <button onClick={()=>deletePhrase(s.id)} className="text-red-500 hover:text-red-400"><Icon name="trash" size={16}/></button>
                             </div>
-                            <button onClick={()=>deletePhrase(s.id)} className="text-red-500 hover:text-red-400"><Icon name="trash" size={18}/></button>
                         </div>))}</div>)}
                     </div>
                     <div className="bg-blue-900/30 border border-blue-500/30 rounded-xl p-4">
