@@ -197,7 +197,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.7.0';
+        const APP_VERSION = '5.7.1';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -990,7 +990,7 @@ function getOrCreateSheet(){
                         if(cv&&cv.version&&cv.version!==APP_VERSION&&!cv.paused){
                             setUpdateAvailable(cv);
                         }
-                        if(cv&&cv.forceUpdate&&cv.forceUpdate.active){
+                        if(cv&&cv.forceUpdate&&cv.forceUpdate.active&&new Date(cv.forceUpdate.time)>new Date()){
                             setForceUpdateInfo(cv.forceUpdate);
                         }
                     }catch(e){}
@@ -1001,6 +1001,8 @@ function getOrCreateSheet(){
             // Force Update: poll every 30s + countdown + auto-reload
             useEffect(()=>{
                 if(!forceUpdateInfo||!forceUpdateInfo.active)return;
+                // Safety: if already expired, just clear it
+                if(new Date(forceUpdateInfo.time)<=new Date()){setForceUpdateInfo(null);setForceCountdownText('');return}
                 const tick=()=>{
                     const diff=new Date(forceUpdateInfo.time)-new Date();
                     if(diff<=0){window.location.reload();return}
@@ -1015,7 +1017,7 @@ function getOrCreateSheet(){
                 const poll=async()=>{
                     try{
                         const cv=await api.getVersion();
-                        if(cv&&cv.forceUpdate&&cv.forceUpdate.active){
+                        if(cv&&cv.forceUpdate&&cv.forceUpdate.active&&new Date(cv.forceUpdate.time)>new Date()){
                             setForceUpdateInfo(cv.forceUpdate);
                         }else if(forceUpdateInfo){
                             setForceUpdateInfo(null);setForceCountdownText('');
@@ -2647,7 +2649,11 @@ function getOrCreateSheet(){
                         setUpdatesPaused(!!v.paused);
                         if(v.forceUpdate&&v.forceUpdate.active&&new Date(v.forceUpdate.time)>new Date()){
                             setForceActive(true);setForceTime(v.forceUpdate.time);
-                        }else{setForceActive(false);setForceTime('')}
+                        }else{
+                            setForceActive(false);setForceTime('');
+                            // Auto-clean expired forceUpdate from backend
+                            if(v.forceUpdate){const clean={...v};delete clean.forceUpdate;api.saveVersion(clean).catch(()=>{})}
+                        }
                     }else{setNewVersion(APP_VERSION)}
                 }catch(e){console.error(e)}
                 finally{setLoading(false)}
@@ -6322,6 +6328,8 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
             const[roundWheels,setRoundWheels]=useState({});
             const[bracketSlots,setBracketSlots]=useState(null);
             const[swapSelect,setSwapSelect]=useState(null);
+            const[bracketSwapMode,setBracketSwapMode]=useState(false);
+            const[bracketSwapSel,setBracketSwapSel]=useState(null);
 
             // All wheels (regular + tournament-only)
             const allWheels=(appData.quizzes||[]).filter(q=>q.type==='wheel'&&(q.wheelSegments||[]).length>0);
@@ -6533,8 +6541,6 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
 
             // === TOURNAMENT DETAIL VIEW ===
             const tv=viewTournament?tournaments.find(t=>t.id===viewTournament.id):null;
-            const[bracketSwapMode,setBracketSwapMode]=useState(false);
-            const[bracketSwapSel,setBracketSwapSel]=useState(null); // {ri,mi,slot}
             
             const swapBracketPlayers=(tid,sel1,sel2)=>{
                 const tList=tournaments.map(t=>{
