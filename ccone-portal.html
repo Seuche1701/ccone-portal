@@ -5,14 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CCONE PORTAL - EKD & VNR</title>
     <script>
-    // Capture file source BEFORE anything else loads
     window.__FILE_SOURCE=null;
-    try{
-        var x=new XMLHttpRequest();
-        x.open('GET',location.href,false);
-        x.send();
-        if(x.responseText&&x.responseText.length>1000)window.__FILE_SOURCE=x.responseText;
-    }catch(e){}
+    try{var x=new XMLHttpRequest();x.open("GET",location.href,false);x.send();if(x.responseText&&x.responseText.length>1000)window.__FILE_SOURCE=x.responseText;}catch(e){}
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -21,6 +15,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -189,18 +184,20 @@
         .chess-table::after{content:'';position:absolute;width:450px;height:450px;left:-10%;bottom:-20%;background:radial-gradient(circle,rgba(30,60,150,0.12),transparent);border-radius:50%;filter:blur(80px);pointer-events:none}
         @keyframes float-game{0%,100%{transform:translateY(0) rotate(var(--rot,0deg))}50%{transform:translateY(-12px) rotate(var(--rot,0deg))}}
         .game-float{animation:float-game 4s ease-in-out infinite}
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <div id="root"></div>
     <script type="text/babel">
+
         const{useState,useEffect,useRef}=React;
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.6.5';
+        const APP_VERSION = '5.7.3';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -212,7 +209,7 @@
         // If confirm silently returns nothing (iframe blocks it), just return true
         try{const _test=window.confirm;window.confirm=function(msg){const r=_test.call(window,msg);return r===undefined?true:r}}catch(e){window.confirm=function(){return true}}
 
-        const EMBEDDED_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxbVnkdIOeD79_YT-ca6A6DfBZj5zgSgofLM2l7Ec7qssGmS2EwzZlS-meV9iXSSk6aaQ/exec';
+        const EMBEDDED_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzcAYFsf9d1wY4GDuD8DNIA4yDYeeSfPJqqM3Um3-SvXFn1y4xVWvOXa2nwEIOeYKSP/exec';
         const GOOGLE_SCRIPT_URL = localStorage.getItem('ccone-script-url') || EMBEDDED_SCRIPT_URL;
         
                     // Wer ist CCONE background images
@@ -6290,15 +6287,16 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                             {x.isW&&!x.p?.isBye&&<span style={{fontSize:12}}>{'\ud83d\udc51'}</span>}
                             {isAdmin&&onReplace?(
-                                <select value={x.p?.isBye?'bye':x.p?.id||''} onChange={e=>{
+                                <select value={x.p?.isBye?'__bye__':x.p?.id||'__empty__'} onChange={e=>{
                                     const val=e.target.value;
-                                    if(val===(x.p?.isBye?'bye':x.p?.id||''))return;
-                                    if(val==='bye')onReplace(tid,ri,mi,x.slot,{id:'bye_'+Date.now(),name:'Freilos',isBye:true});
-                                    else{const u=(allUsers||[]).find(p=>p.id===val);if(u)onReplace(tid,ri,mi,x.slot,{id:u.id,name:u.name})}
-                                }} onClick={e=>e.stopPropagation()} className="flex-1 px-1.5 py-0.5 rounded text-sm font-medium truncate cursor-pointer" style={{background:'transparent',border:'1px solid '+(x.p?.isBye?'rgba(100,116,139,0.3)':'rgba(255,255,255,0.08)'),color:x.isW?'#d4af37':x.p?.isBye?'#64748b':'#fff',minWidth:0,appearance:'none',WebkitAppearance:'none',backgroundImage:'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M0 0l5 6 5-6z\' fill=\'%2364748b\'/%3E%3C/svg%3E")',backgroundRepeat:'no-repeat',backgroundPosition:'right 6px center',paddingRight:20}}>
-                                    {x.p?.isBye?<option value="bye" style={{background:'#1e293b',color:'#fbbf24'}}>{'\u23f3'} Freilos</option>:x.p?<option value={x.p.id} style={{background:'#1e293b',color:'#e2e8f0'}}>{x.p.name}</option>:<option value="" style={{background:'#1e293b',color:'#64748b'}}>\u2014</option>}
-                                    <option value="bye" style={{background:'#1e293b',color:'#fbbf24'}}>{'\u23f3'} Freilos</option>
-                                    {(allUsers||[]).filter(u=>u.id!==(x.p?.isBye?'':x.p?.id)).map(u=><option key={u.id} value={u.id} style={{background:'#1e293b',color:'#e2e8f0'}}>{u.name}</option>)}
+                                    console.log('[TURNIER] Replace:',x.slot,val);
+                                    if(val==='__bye__')onReplace(tid,ri,mi,x.slot,{id:'bye_'+Date.now(),name:'Freilos',isBye:true});
+                                    else if(val!=='__empty__'){const u=(allUsers||[]).find(p=>p.id===val);if(u)onReplace(tid,ri,mi,x.slot,{id:u.id,name:u.name})}
+                                }} onClick={e=>e.stopPropagation()} style={{flex:1,padding:'3px 6px',borderRadius:6,fontSize:13,fontWeight:500,cursor:'pointer',minWidth:0,background:'rgba(255,255,255,0.04)',border:'1px solid '+(x.p?.isBye?'rgba(100,116,139,0.3)':'rgba(255,255,255,0.1)'),color:x.isW?'#d4af37':x.p?.isBye?'#94a3b8':'#fff'}}>
+                                    {!x.p||x.p.isBye?null:<option value={x.p.id} style={{background:'#1e293b',color:'#e2e8f0'}}>{x.p.name}</option>}
+                                    <option value="__bye__" style={{background:'#1e293b',color:'#fbbf24'}}>{'\u23f3'} Freilos</option>
+                                    {!x.p&&<option value="__empty__" style={{background:'#1e293b',color:'#64748b'}}>{'\u2014'} Leer</option>}
+                                    {(allUsers||[]).filter(u=>!x.p?.isBye&&u.id===x.p?.id?false:true).map(u=><option key={u.id} value={u.id} style={{background:'#1e293b',color:'#e2e8f0'}}>{u.name}</option>)}
                                 </select>
                             ):(
                                 <span className="text-sm font-medium truncate" style={{color:x.p?x.isW?'#d4af37':x.p?.isBye?'#555':'#fff':'#333'}}>{x.p?.name||'\u2014'}</span>
@@ -6508,28 +6506,40 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
 
             // Replace a bye (or any player) in a live tournament match
             const replacePlayer=(tid,ri,mi,slot,newPlayer)=>{
+                console.log('[TURNIER] replacePlayer:',{tid,ri,mi,slot,newPlayer});
                 const tList=tournaments.map(t=>{
                     if(t.id!==tid)return t;
                     const bracket=t.bracket.map(r=>r.map(m=>({...m})));
                     const match=bracket[ri][mi];
-                    const oldPlayer=match[slot];
                     match[slot]=newPlayer;
-                    // If was a bye-win, reset the match so it can be played
-                    if(oldPlayer?.isBye&&match.winner===oldPlayer?.id){
-                        // Shouldn't happen — bye never wins
+                    // Recalculate match state
+                    if(match.p1?.isBye&&match.p2&&!match.p2.isBye){
+                        match.score1=0;match.score2=0;match.winner=match.p2.id;
+                    }else if(match.p2?.isBye&&match.p1&&!match.p1.isBye){
+                        match.score1=0;match.score2=0;match.winner=match.p1.id;
+                    }else if(match.p1?.isBye&&match.p2?.isBye){
+                        match.score1=0;match.score2=0;match.winner=null;
+                    }else{
+                        match.score1=null;match.score2=null;match.winner=null;
                     }
-                    if(oldPlayer?.isBye||newPlayer.isBye){
-                        // Recalculate: if one side is bye, auto-win for the other
-                        if(match.p1?.isBye&&match.p2&&!match.p2.isBye){
-                            match.score1=0;match.score2=0;match.winner=match.p2.id;
-                        }else if(match.p2?.isBye&&match.p1&&!match.p1.isBye){
-                            match.score1=0;match.score2=0;match.winner=match.p1.id;
-                        }else if(!match.p1?.isBye&&!match.p2?.isBye){
-                            // Both real players now — reset scores so they can play
-                            match.score1=null;match.score2=null;match.winner=null;
+                    // Clear downstream matches only (ri+1 and beyond)
+                    for(let r=ri+1;r<bracket.length;r++){
+                        for(let m2=0;m2<bracket[r].length;m2++){
+                            const srcStart=m2*2;
+                            if(r===ri+1&&(srcStart===mi||srcStart+1===mi)){
+                                const s=srcStart===mi?'p1':'p2';
+                                // Only clear if the winner changed
+                                if(match.winner){
+                                    const w=match.p1?.id===match.winner?match.p1:match.p2;
+                                    bracket[r][m2]={...bracket[r][m2],[s]:w};
+                                }else{
+                                    bracket[r][m2]={...bracket[r][m2],[s]:null,score1:null,score2:null,winner:null};
+                                }
+                            }
                         }
                     }
-                    const updated={...t,bracket:advanceBracket(bracket),participants:[...t.participants.filter(p=>p.id!==newPlayer.id),newPlayer]};
+                    // Do NOT call advanceBracket — it would overwrite our manual change
+                    const updated={...t,bracket,participants:[...t.participants.filter(p=>p.id!==newPlayer.id),newPlayer]};
                     const fm=updated.bracket[updated.bracket.length-1][0];
                     if(fm.winner)updated.status='finished';else updated.status='active';
                     return updated;
@@ -12781,13 +12791,14 @@ Regeln:
 </main></div></div>)}
 
         ReactDOM.render(<App/>,document.getElementById('root'));
+    
     </script>
     <script>
-    // Capture ORIGINAL source BEFORE Babel processes and removes it
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
         // 🎨 DARK MODE FIX - Macht ALLES dunkel!
         function applyDarkMode() {
             // 🔥 SUPER AGGRESSIVE DARK MODE - ÜBERSCHREIBT ALLES!
@@ -12869,6 +12880,7 @@ Regeln:
             attributes: true,
             attributeFilter: ['class']
         });
+    
     </script>
 </body>
 </html>
