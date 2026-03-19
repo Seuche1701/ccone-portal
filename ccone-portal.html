@@ -197,7 +197,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.7.1';
+        const APP_VERSION = '5.7.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -6269,7 +6269,7 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
             );
         }
 
-        function MatchCard({m,mi,ri,tid,done,isAdmin,onConfirm,onReset,onReplace,availablePlayers,swapMode,swapSel,onSwapClick}){
+        function MatchCard({m,mi,ri,tid,done,isAdmin,onConfirm,onReset,onReplace,allUsers}){
             const[s1,setS1]=useState(m.score1!==null?String(m.score1):'');
             const[s2,setS2]=useState(m.score2!==null?String(m.score2):'');
             const[editing,setEditing]=useState(false);
@@ -6286,12 +6286,16 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                     <div key={pi} className="flex items-center justify-between px-3 py-2.5" style={{background:x.isW?'rgba(212,175,55,0.08)':'transparent',borderBottom:pi===0?'1px solid rgba(255,255,255,0.06)':'none'}}>
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                             {x.isW&&!x.p?.isBye&&<span style={{fontSize:12}}>{'\ud83d\udc51'}</span>}
-                            {swapMode&&x.p?(
-                                <button onClick={e=>{e.stopPropagation();if(onSwapClick)onSwapClick(x.slot)}} className="flex-1 px-2 py-0.5 rounded text-sm font-medium truncate text-left" style={{background:swapSel&&swapSel.ri===ri&&swapSel.mi===mi&&swapSel.slot===x.slot?'rgba(59,130,246,0.25)':'rgba(59,130,246,0.08)',border:'1.5px solid '+(swapSel&&swapSel.ri===ri&&swapSel.mi===mi&&swapSel.slot===x.slot?'rgba(59,130,246,0.6)':'rgba(59,130,246,0.2)'),color:x.p.isBye?'#64748b':'#60a5fa',cursor:'pointer'}}>{x.p.isBye?'Freilos':x.p.name}</button>
-                            ):x.p?.isBye&&isAdmin&&onReplace?(
-                                <select value="bye" onChange={e=>{if(e.target.value==='bye')return;const u=availablePlayers?.find(p=>p.id===e.target.value);if(u)onReplace(tid,ri,mi,x.slot,{id:u.id,name:u.name})}} onClick={e=>e.stopPropagation()} className="flex-1 px-1 py-0.5 rounded border border-amber-600/40 bg-amber-900/20 text-amber-300 text-xs font-medium cursor-pointer" style={{minWidth:0}}>
-                                    <option value="bye" style={{background:'#1e293b',color:'#fbbf24'}}>{'\u23f3'} Freilos (ersetzen...)</option>
-                                    {(availablePlayers||[]).map(u=><option key={u.id} value={u.id} style={{background:'#1e293b',color:'#e2e8f0'}}>{u.name}</option>)}
+                            {isAdmin&&onReplace?(
+                                <select value={x.p?.isBye?'bye':x.p?.id||''} onChange={e=>{
+                                    const val=e.target.value;
+                                    if(val===(x.p?.isBye?'bye':x.p?.id||''))return;
+                                    if(val==='bye')onReplace(tid,ri,mi,x.slot,{id:'bye_'+Date.now(),name:'Freilos',isBye:true});
+                                    else{const u=(allUsers||[]).find(p=>p.id===val);if(u)onReplace(tid,ri,mi,x.slot,{id:u.id,name:u.name})}
+                                }} onClick={e=>e.stopPropagation()} className="flex-1 px-1.5 py-0.5 rounded text-sm font-medium truncate cursor-pointer" style={{background:'transparent',border:'1px solid '+(x.p?.isBye?'rgba(100,116,139,0.3)':'rgba(255,255,255,0.08)'),color:x.isW?'#d4af37':x.p?.isBye?'#64748b':'#fff',minWidth:0,appearance:'none',WebkitAppearance:'none',backgroundImage:'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M0 0l5 6 5-6z\' fill=\'%2364748b\'/%3E%3C/svg%3E")',backgroundRepeat:'no-repeat',backgroundPosition:'right 6px center',paddingRight:20}}>
+                                    {x.p?.isBye?<option value="bye" style={{background:'#1e293b',color:'#fbbf24'}}>{'\u23f3'} Freilos</option>:x.p?<option value={x.p.id} style={{background:'#1e293b',color:'#e2e8f0'}}>{x.p.name}</option>:<option value="" style={{background:'#1e293b',color:'#64748b'}}>\u2014</option>}
+                                    <option value="bye" style={{background:'#1e293b',color:'#fbbf24'}}>{'\u23f3'} Freilos</option>
+                                    {(allUsers||[]).filter(u=>u.id!==(x.p?.isBye?'':x.p?.id)).map(u=><option key={u.id} value={u.id} style={{background:'#1e293b',color:'#e2e8f0'}}>{u.name}</option>)}
                                 </select>
                             ):(
                                 <span className="text-sm font-medium truncate" style={{color:x.p?x.isW?'#d4af37':x.p?.isBye?'#555':'#fff':'#333'}}>{x.p?.name||'\u2014'}</span>
@@ -6328,8 +6332,6 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
             const[roundWheels,setRoundWheels]=useState({});
             const[bracketSlots,setBracketSlots]=useState(null);
             const[swapSelect,setSwapSelect]=useState(null);
-            const[bracketSwapMode,setBracketSwapMode]=useState(false);
-            const[bracketSwapSel,setBracketSwapSel]=useState(null);
 
             // All wheels (regular + tournament-only)
             const allWheels=(appData.quizzes||[]).filter(q=>q.type==='wheel'&&(q.wheelSegments||[]).length>0);
@@ -6541,31 +6543,6 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
 
             // === TOURNAMENT DETAIL VIEW ===
             const tv=viewTournament?tournaments.find(t=>t.id===viewTournament.id):null;
-            
-            const swapBracketPlayers=(tid,sel1,sel2)=>{
-                const tList=tournaments.map(t=>{
-                    if(t.id!==tid)return t;
-                    const bracket=t.bracket.map(r=>r.map(m=>({...m})));
-                    const m1=bracket[sel1.ri][sel1.mi];
-                    const m2=bracket[sel2.ri][sel2.mi];
-                    const p1=m1[sel1.slot];
-                    const p2=m2[sel2.slot];
-                    m1[sel1.slot]=p2;m2[sel2.slot]=p1;
-                    // Recalculate bye wins for affected matches
-                    [m1,m2].forEach(m=>{
-                        if(m.p1?.isBye&&m.p2&&!m.p2.isBye){m.score1=0;m.score2=0;m.winner=m.p2.id}
-                        else if(m.p2?.isBye&&m.p1&&!m.p1.isBye){m.score1=0;m.score2=0;m.winner=m.p1.id}
-                        else if(m.p1?.isBye&&m.p2?.isBye){m.score1=0;m.score2=0;m.winner=null}
-                        else if(!m.p1?.isBye&&!m.p2?.isBye&&(m.score1===0&&m.score2===0&&m.winner)){
-                            m.score1=null;m.score2=null;m.winner=null;
-                        }
-                    });
-                    return{...t,bracket:advanceBracket(bracket)};
-                });
-                updateData({...appData,wheelTournaments:tList});
-                setBracketSwapSel(null);
-                showNotification('Spieler getauscht!');
-            };
             if(tv){
                 const finalMatch=tv.bracket[tv.bracket.length-1][0];
                 const champion=finalMatch.winner?(finalMatch.p1?.id===finalMatch.winner?finalMatch.p1:finalMatch.p2):null;
@@ -6578,16 +6555,8 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                             <div><h2 className="text-xl font-bold text-white">🏆 {tv.title}</h2><p className="text-xs text-slate-500">{tv.participants.filter(p=>!p.isBye).length} Teilnehmer • {tv.status==='finished'?'Beendet':'Aktiv'}</p></div>
                         </div>
                         {champion&&<div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{background:'linear-gradient(135deg,rgba(212,175,55,0.2),rgba(184,134,11,0.2))',border:'1.5px solid rgba(212,175,55,0.4)'}}><span style={{fontSize:20}}>🏆</span><span className="font-bold" style={{color:'#d4af37'}}>{champion.name}</span></div>}
-                        {isAdmin&&!champion&&<button onClick={()=>{setBracketSwapMode(!bracketSwapMode);setBracketSwapSel(null)}} className="px-3 py-1.5 rounded-xl text-xs font-bold" style={{background:bracketSwapMode?'rgba(59,130,246,0.2)':'rgba(255,255,255,0.05)',border:'1.5px solid '+(bracketSwapMode?'rgba(59,130,246,0.5)':'rgba(255,255,255,0.1)'),color:bracketSwapMode?'#60a5fa':'#94a3b8'}}>{bracketSwapMode?'\u2713 Fertig':'\u21c4 Reihenfolge \u00e4ndern'}</button>}
                     </div>
                     {/* Bracket */}
-                    {bracketSwapMode&&(
-                        <div className="mb-3 p-2.5 rounded-xl flex items-center gap-2" style={{background:'rgba(59,130,246,0.08)',border:'1px solid rgba(59,130,246,0.2)'}}>
-                            <span style={{fontSize:14}}>{'\u21c4'}</span>
-                            <span className="text-xs text-blue-300 font-medium">{bracketSwapSel?'Jetzt zweiten Spieler anklicken zum Tauschen':'Klicke einen Spieler an um ihn zu verschieben'}</span>
-                            {bracketSwapSel&&<button onClick={()=>setBracketSwapSel(null)} className="ml-auto px-2 py-0.5 rounded text-xs" style={{background:'rgba(255,255,255,0.05)',color:'#94a3b8'}}>Abbrechen</button>}
-                        </div>
-                    )}
                     <div className="overflow-x-auto pb-4">
                         <div style={{display:'flex',gap:24,minWidth:tv.bracket.length*280}}>
                             {tv.bracket.map((round,ri)=>{
@@ -6601,12 +6570,7 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                                     </div>
                                     {round.map((m,mi)=>{
                                         const done=m.winner!==null;
-                                        const usedIds=new Set();tv.bracket.forEach(r=>r.forEach(m=>{if(m.p1&&!m.p1.isBye)usedIds.add(m.p1.id);if(m.p2&&!m.p2.isBye)usedIds.add(m.p2.id)}));
-                                        const avail=allUsers.filter(u=>!usedIds.has(u.id));
-                                        return(<MatchCard key={mi} m={m} mi={mi} ri={ri} tid={tv.id} done={done} isAdmin={isAdmin} onConfirm={confirmMatch} onReset={resetMatch} onReplace={replacePlayer} availablePlayers={avail} swapMode={bracketSwapMode} swapSel={bracketSwapSel} onSwapClick={(slot)=>{
-                                            if(!bracketSwapSel){setBracketSwapSel({ri,mi,slot})}
-                                            else{swapBracketPlayers(tv.id,bracketSwapSel,{ri,mi,slot});setBracketSwapMode(false)}
-                                        }}/>);
+                                        return(<MatchCard key={mi} m={m} mi={mi} ri={ri} tid={tv.id} done={done} isAdmin={isAdmin} onConfirm={confirmMatch} onReset={resetMatch} onReplace={replacePlayer} allUsers={allUsers}/>);
                                     })}
                                 </div>);
                             })}
