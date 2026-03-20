@@ -201,7 +201,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.8.1';
+        const APP_VERSION = '5.8.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -6683,15 +6683,21 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
             );
         }
 
-        function MatchCard({m,mi,ri,tid,done,isAdmin,onConfirm,onReset,onReplace,allUsers}){
-            const[s1,setS1]=useState(m.score1!==null?String(m.score1):'');
-            const[s2,setS2]=useState(m.score2!==null?String(m.score2):'');
+        function MatchCard({m,mi,ri,tid,done,isAdmin,onConfirm,onSetScore,onReset,onReplace,allUsers}){
+            const fmtScore=(v)=>v!==null?v.toLocaleString('de-DE'):'';
+            const[s1,setS1]=useState(fmtScore(m.score1));
+            const[s2,setS2]=useState(fmtScore(m.score2));
             const[editing,setEditing]=useState(false);
             const input1Ref=useRef(null);
-            useEffect(()=>{setS1(m.score1!==null?String(m.score1):'');setS2(m.score2!==null?String(m.score2):'');},[m.score1,m.score2]);
+            useEffect(()=>{setS1(fmtScore(m.score1));setS2(fmtScore(m.score2));},[m.score1,m.score2]);
             useEffect(()=>{if(editing||(!done&&m.p1&&m.p2&&!m.p1.isBye&&!m.p2.isBye)){setTimeout(()=>{if(input1Ref.current)input1Ref.current.focus()},100)}},[editing,done]);
-            const canConfirm=s1!==''&&s2!==''&&s1!==s2;
-            const handleConfirm=()=>{onConfirm(tid,ri,mi,+s1,+s2);setEditing(false)};
+            const parseScore=(v)=>{if(v==='')return NaN;const s=String(v).replace(/\./g,'').replace(',','.');return Number(s)};
+            const canConfirm=s1!==''&&s2!==''&&parseScore(s1)!==parseScore(s2)&&!isNaN(parseScore(s1))&&!isNaN(parseScore(s2));
+            const handleConfirm=()=>{onConfirm(tid,ri,mi,parseScore(s1),parseScore(s2));setEditing(false)};
+            const s1Ref=useRef(s1);const s2Ref=useRef(s2);
+            useEffect(()=>{s1Ref.current=s1},[s1]);
+            useEffect(()=>{s2Ref.current=s2},[s2]);
+            const handleBlur=(playerNum)=>{setTimeout(()=>{const a=s1Ref.current,b=s2Ref.current;const pa=parseScore(a),pb=parseScore(b);if(a!==''&&b!==''&&!isNaN(pa)&&!isNaN(pb)&&pa!==pb){onConfirm(tid,ri,mi,pa,pb)}else if(onSetScore){if(playerNum===1&&a!==''&&!isNaN(pa))onSetScore(tid,ri,mi,1,pa);if(playerNum===2&&b!==''&&!isNaN(pb))onSetScore(tid,ri,mi,2,pb)}},150)};
             const showInputs=isAdmin&&(!done||editing);
             const hasBye=m.p1?.isBye||m.p2?.isBye;
             return(
@@ -6717,9 +6723,9 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                             )}
                         </div>
                         {x.p&&!x.p.isBye&&showInputs?(
-                            <input ref={x.inputRef} type="number" min="0" value={x.localS} onFocus={e=>e.target.select()} onChange={e=>x.setS(e.target.value)} onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} className="w-20 px-2 py-1 rounded border border-slate-600 bg-slate-800/80 text-white text-center text-sm font-bold focus:border-amber-500 focus:outline-none" placeholder="Pkt" style={{WebkitAppearance:'none',MozAppearance:'textfield'}}/>
+                            <input ref={x.inputRef} type="text" inputMode="numeric" value={x.localS} onFocus={e=>e.target.select()} onChange={e=>x.setS(e.target.value)} onBlur={()=>handleBlur(x.num)} onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} className="w-20 px-2 py-1 rounded border border-slate-600 bg-slate-800/80 text-white text-center text-sm font-bold focus:border-amber-500 focus:outline-none" placeholder="Pkt"/>
                         ):(
-                            <span className="text-sm font-bold min-w-[3rem] text-right" style={{color:x.isW?'#d4af37':x.s!==null&&!x.p?.isBye?'#fff':'#555'}}>{x.p?.isBye?'':x.s!==null?x.s.toLocaleString():''}</span>
+                            <span className="text-sm font-bold min-w-[3rem] text-right" style={{color:x.isW?'#d4af37':x.s!==null&&!x.p?.isBye?'#fff':'#555'}}>{x.p?.isBye?'':x.s!==null?x.s.toLocaleString('de-DE'):''}</span>
                         )}
                     </div>
                 ))}
@@ -6997,7 +7003,7 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                                     </div>
                                     {round.map((m,mi)=>{
                                         const done=m.winner!==null;
-                                        return(<MatchCard key={mi} m={m} mi={mi} ri={ri} tid={tv.id} done={done} isAdmin={isAdmin} onConfirm={confirmMatch} onReset={resetMatch} onReplace={replacePlayer} allUsers={allUsers}/>);
+                                        return(<MatchCard key={mi} m={m} mi={mi} ri={ri} tid={tv.id} done={done} isAdmin={isAdmin} onConfirm={confirmMatch} onSetScore={setScore} onReset={resetMatch} onReplace={replacePlayer} allUsers={allUsers}/>);
                                     })}
                                 </div>);
                             })}
@@ -7016,7 +7022,7 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                                 return(<div key={p.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)'}}>
                                     {champion?.id===p.id&&<span>🏆</span>}
                                     <span className="text-sm text-white">{p.name}</span>
-                                    <span className="text-xs font-bold" style={{color:'#d4af37'}}>{total.toLocaleString()}P</span>
+                                    <span className="text-xs font-bold" style={{color:'#d4af37'}}>{total.toLocaleString('de-DE')}P</span>
                                     <span className="text-xs text-slate-500">{wins}W</span>
                                 </div>);
                             })}
