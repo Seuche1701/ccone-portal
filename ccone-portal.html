@@ -201,7 +201,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.8.8';
+        const APP_VERSION = '5.8.9';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -13394,6 +13394,8 @@ Regeln:
 
         function LiveDashboard({onBack,showNotification,appData,refreshData,updateData}){
             const[mode,setMode]=useState(null);
+            const[zoom,setZoom]=useState(parseFloat(sessionStorage.getItem('dashboard_zoom')||'1'));
+            const adjustZoom=(delta)=>{var nz=Math.round((zoom+delta)*100)/100;nz=Math.max(0.5,Math.min(2,nz));setZoom(nz);sessionStorage.setItem('dashboard_zoom',String(nz))};
             const[vnrData,setVnrData]=useState(null);
             const[ekdData,setEkdData]=useState(null);
             const[lastUpdate,setLastUpdate]=useState(null);
@@ -13660,9 +13662,14 @@ Regeln:
                     </div>
                     <div className="flex items-center gap-3">
                         {lastUpdate&&<span className="text-base text-slate-400">Update: {lastUpdate.toLocaleTimeString('de-DE')}</span>}
+                        <div className="flex items-center gap-1 ml-2" style={{background:'rgba(255,255,255,0.06)',borderRadius:8,padding:'2px 4px'}}>
+                            <button onClick={()=>adjustZoom(-0.1)} className="w-8 h-8 rounded-lg text-lg font-black text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center">−</button>
+                            <span className="text-sm text-slate-400 font-bold min-w-[40px] text-center">{Math.round(zoom*100)}%</span>
+                            <button onClick={()=>adjustZoom(0.1)} className="w-8 h-8 rounded-lg text-lg font-black text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center">+</button>
+                        </div>
                     </div>
                 </div>
-                <div className="flex flex-1 overflow-hidden">
+                <div className="flex flex-1 overflow-hidden" style={{transformOrigin:'top left',transform:'scale('+zoom+')',width:(100/zoom)+'%',height:(100/zoom)+'%'}}>
                     {(mode==='vnr'||mode==='both')&&<Panel title="VNR" data={vnrData} color="#10b981" isLive={true} isEkd={false} fullWidth={mode==='vnr'}/>}
                     {mode==='both'&&<div className="w-px flex-shrink-0" style={{background:'rgba(255,255,255,0.1)'}}/>}
                     {(mode==='ekd'||mode==='both')&&<Panel title="EKD" data={filteredEkdData} color="#3b82f6" isLive={true} isEkd={true} onUpload={true} fullWidth={mode==='ekd'} standort={ekdStandort} onStandortChange={setEkdStandort}/>}
