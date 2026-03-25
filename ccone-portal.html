@@ -201,7 +201,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.8.3';
+        const APP_VERSION = '5.8.4';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -13390,27 +13390,34 @@ Regeln:
 </main></div></div>)}
 
         function LiveDashboard({onBack,showNotification}){
+            const[mode,setMode]=useState(null);
             const[vnrData,setVnrData]=useState(null);
             const[ekdData,setEkdData]=useState(null);
             const[lastUpdate,setLastUpdate]=useState(null);
             const fileRef=useRef(null);
 
-            // Poll VNR from Supabase
+            // Poll from Supabase based on mode
             useEffect(()=>{
-                const fetchVnr=async()=>{
-                    try{
-                        const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.liveDashboard_vnr&select=value',{
-                            headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}
-                        });
+                if(!mode)return;
+                const polls=[];
+                if(mode==='vnr'||mode==='both'){
+                    const fetchVnr=async()=>{try{
+                        const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.liveDashboard_vnr&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(r.ok){const d=await r.json();if(d[0]&&d[0].value){setVnrData(d[0].value);setLastUpdate(new Date())}}
-                    }catch(e){}
-                };
-                fetchVnr();
-                const poll=setInterval(fetchVnr,5000);
-                return()=>clearInterval(poll);
-            },[]);
+                    }catch(e){}};
+                    fetchVnr();polls.push(setInterval(fetchVnr,5000));
+                }
+                if(mode==='ekd'||mode==='both'){
+                    const fetchEkd=async()=>{try{
+                        const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.liveDashboard_ekd&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                        if(r.ok){const d=await r.json();if(d[0]&&d[0].value){setEkdData(d[0].value);setLastUpdate(new Date())}}
+                    }catch(e){}};
+                    fetchEkd();polls.push(setInterval(fetchEkd,5000));
+                }
+                return()=>polls.forEach(p=>clearInterval(p));
+            },[mode]);
 
-            // EKD CSV upload
+            // EKD CSV upload fallback
             const handleCsvUpload=(e)=>{
                 const file=e.target.files[0];if(!file)return;
                 const reader=new FileReader();
@@ -13427,22 +13434,7 @@ Regeln:
                             const get=(keys)=>{for(const k of keys){const idx=headers.findIndex(h=>h.includes(k));if(idx>=0&&cols[idx])return cols[idx]}return''};
                             const name=get(['name','agent','agentname'])||cols[0]||'';
                             if(!name||name.includes('Anzahl'))continue;
-                            agents.push({
-                                name:name,
-                                kampagne:get(['kampagne','campaign','queue','projekt'])||'EKD',
-                                status:get(['status','state'])||'',
-                                statuszeit:get(['statuszeit','zeit','duration'])||'',
-                                anrufe:parseInt(get(['anrufe','calls','gespräche']))||0,
-                                termine:parseInt(get(['termine','appointments','wiedervorlagen']))||0,
-                                nettos:parseInt(get(['netto','nettos','nettokontakte']))||0,
-                                erfolge:parseInt(get(['erfolge','success','verkäufe']))||0,
-                                anrufeH:get(['anrufe/h','calls/h','anrufeh'])||'0',
-                                loginzeit:get(['loginzeit','login','logged'])||'0',
-                                talk:get(['talk','gesprächszeit','talktime'])||'0',
-                                wait:get(['wait','wartezeit','wartend'])||'0',
-                                pause:get(['pause','pausenzeit'])||'0',
-                                dispo:get(['dispo','nacharbeit','afterwork'])||'0'
-                            });
+                            agents.push({name,kampagne:get(['kampagne','campaign','queue','projekt'])||'EKD',status:get(['status','state'])||'',statuszeit:get(['statuszeit','zeit','duration'])||'',anrufe:parseInt(get(['anrufe','calls']))||0,termine:parseInt(get(['termine','appointments','termin']))||0,nettos:parseInt(get(['netto','nettos']))||0,erfolge:parseInt(get(['erfolge','success']))||0,anrufeH:get(['anrufe/h','calls/h'])||'0',loginzeit:get(['loginzeit','login'])||'0',talk:get(['talk','gesprächszeit'])||'0',wait:get(['wait','wartezeit'])||'0',pause:get(['pause','pausenzeit'])||'0',dispo:get(['dispo','nacharbeit'])||'0'});
                         }
                         const sum={total:agents.length,aktiv:0,wartend:0,anrufe:agents.reduce((s,a)=>s+a.anrufe,0),termine:agents.reduce((s,a)=>s+a.termine,0),nettos:agents.reduce((s,a)=>s+a.nettos,0),erfolge:agents.reduce((s,a)=>s+a.erfolge,0)};
                         setEkdData({agents,summary:sum,updatedAt:new Date().toISOString(),source:'csv-upload'});
@@ -13460,12 +13452,16 @@ Regeln:
                 </div>
             );
 
-            const AgentCard=({a,compact})=>{
-                const sc={Gespräch:{bg:'rgba(239,68,68,0.15)',c:'#f87171'},Nacharbeit:{bg:'rgba(245,158,11,0.15)',c:'#fbbf24'},Wartend:{bg:'rgba(16,185,129,0.15)',c:'#34d399'}}[a.status]||{bg:'rgba(16,185,129,0.15)',c:'#34d399'};
-                const si={Gespräch:'📞',Nacharbeit:'📝',Wartend:'⏳'}[a.status]||'⏳';
+            const AgentCard=({a,compact,isEkd})=>{
+                const sc=isEkd?
+                    ({belegt:{bg:'rgba(239,68,68,0.15)',c:'#f87171'},frei:{bg:'rgba(59,130,246,0.15)',c:'#60a5fa'},Pause:{bg:'rgba(245,158,11,0.15)',c:'#fbbf24'},Nachbearbeitung:{bg:'rgba(168,85,247,0.15)',c:'#c084fc'}}[a.status]||{bg:'rgba(100,116,139,0.15)',c:'#94a3b8'}):
+                    ({Gespräch:{bg:'rgba(239,68,68,0.15)',c:'#f87171'},Nacharbeit:{bg:'rgba(245,158,11,0.15)',c:'#fbbf24'},Wartend:{bg:'rgba(16,185,129,0.15)',c:'#34d399'}}[a.status]||{bg:'rgba(16,185,129,0.15)',c:'#34d399'});
+                const si=isEkd?
+                    ({belegt:'📞',frei:'✅',Pause:'⏸️',Nachbearbeitung:'📝'}[a.status]||'⏳'):
+                    ({Gespräch:'📞',Nacharbeit:'📝',Wartend:'⏳'}[a.status]||'⏳');
                 return(
                 <div className="rounded-xl overflow-hidden" style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)'}}>
-                    <div className="px-3 py-2 flex items-center justify-between" style={{background:'rgba(16,185,129,0.08)',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+                    <div className="px-3 py-2 flex items-center justify-between" style={{background:isEkd?'rgba(59,130,246,0.08)':'rgba(16,185,129,0.08)',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
                         <div className="flex items-center gap-2 min-w-0">
                             <span style={{fontSize:14}}>{si}</span>
                             <div className="min-w-0"><div className="text-white font-bold text-xs truncate">{a.name}</div><div className="text-slate-500" style={{fontSize:9}}>{a.kampagne}</div></div>
@@ -13476,81 +13472,153 @@ Regeln:
                         </div>
                     </div>
                     <div className="px-3 py-2">
-                        <div className="grid grid-cols-4 gap-1 mb-2">
-                            {[['📞',a.anrufe,'Anrufe'],['📅',a.termine,'WVL'],['📦',a.nettos,'Netto'],['✅',a.erfolge,'Erfolge']].map(([ic,v,l],i)=>(
-                                <div key={i} className="text-center p-1 rounded" style={{background:'rgba(255,255,255,0.04)'}}>
-                                    <div style={{fontSize:10}}>{ic}</div>
-                                    <div className="font-black text-emerald-400" style={{fontSize:compact?12:14}}>{v}</div>
-                                    <div style={{fontSize:7,color:'#64748b',fontWeight:600}}>{l}</div>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="grid grid-cols-2 gap-1 mb-2">
-                            <div className="text-center p-1 rounded" style={{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.15)'}}>
-                                <div style={{fontSize:7,color:'#10b981',fontWeight:700}}>ANRUFE/H</div>
-                                <div className="font-black text-emerald-300 text-sm">{a.anrufeH}</div>
+                        {isEkd?(
+                            <div className="grid grid-cols-3 gap-1">
+                                {[['📅',a.termin||0,'Termine'],['📋',a.beendet||0,'Beendet'],['❌',a.ne||0,'NE']].map(([ic,v,l],i)=>(
+                                    <div key={i} className="text-center p-1 rounded" style={{background:'rgba(255,255,255,0.04)'}}>
+                                        <div style={{fontSize:10}}>{ic}</div>
+                                        <div className="font-black text-blue-400" style={{fontSize:compact?12:14}}>{v}</div>
+                                        <div style={{fontSize:7,color:'#64748b',fontWeight:600}}>{l}</div>
+                                    </div>
+                                ))}
                             </div>
-                            <div className="text-center p-1 rounded" style={{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.15)'}}>
-                                <div style={{fontSize:7,color:'#10b981',fontWeight:700}}>LOGINZEIT</div>
-                                <div className="font-black text-emerald-300 text-sm">{a.loginzeit}h</div>
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            {[['Gespräch',a.talk],['Wartezeit',a.wait],['Pause',a.pause],['Nacharbeit',a.dispo]].map(([l,v],i)=>(
-                                <div key={i}>
-                                    <div className="flex justify-between" style={{fontSize:8,fontWeight:700,color:'#64748b'}}><span>{l}</span><span className="text-emerald-400">{v}%</span></div>
-                                    <div className="h-1 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.06)'}}><div className="h-full rounded-full" style={{width:v+'%',background:'linear-gradient(90deg,#10b981,#14b8a6)'}}/></div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>);
-            };
-
-            const Panel=({title,data,color,isLive,onUpload})=>{
-                const agents=data?.agents||[];
-                const sum=data?.summary||{};
-                const updated=data?.updatedAt?new Date(data.updatedAt).toLocaleTimeString('de-DE'):'—';
-                const compact=agents.length>6;
-                return(
-                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                    <div className="px-4 py-3 flex items-center justify-between flex-shrink-0" style={{background:color+'15',borderBottom:'2px solid '+color+'40'}}>
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-white" style={{background:color}}>{title.charAt(0)}</div>
-                            <div><h2 className="text-white font-black text-lg">{title}</h2><p className="text-xs text-slate-400">{agents.length} Agents • {updated}</p></div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            {isLive&&<span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400" style={{animation:'pulse 2s infinite'}}/><span className="text-xs text-green-400 font-bold">LIVE</span></span>}
-                            {onUpload&&<button onClick={()=>fileRef.current?.click()} className="px-3 py-1 rounded-lg text-xs font-bold" style={{background:color+'20',color:color,border:'1px solid '+color+'40'}}>📄 CSV laden</button>}
-                        </div>
-                    </div>
-                    {agents.length>0&&(
-                        <div className="px-3 py-2 flex-shrink-0">
-                            <div className="grid grid-cols-7 gap-2">
-                                <StatCard icon="👥" value={sum.total||0} label="Agents" color={color}/>
-                                <StatCard icon="📞" value={sum.aktiv||0} label="Aktiv" color={color}/>
-                                <StatCard icon="⏳" value={sum.wartend||0} label="Wartend" color={color}/>
-                                <StatCard icon="📊" value={sum.anrufe||0} label="Anrufe" color={color}/>
-                                <StatCard icon="📅" value={sum.termine||0} label="WVL" color={color}/>
-                                <StatCard icon="📦" value={sum.nettos||0} label="Netto" color={color}/>
-                                <StatCard icon="✅" value={sum.erfolge||0} label="Erfolge" color={color}/>
-                            </div>
-                        </div>
-                    )}
-                    <div className="flex-1 overflow-y-auto px-3 pb-3">
-                        {agents.length===0?(
-                            <div className="flex items-center justify-center h-full"><div className="text-center">
-                                <div style={{fontSize:48,opacity:0.3}}>{onUpload?'📄':'📡'}</div>
-                                <p className="text-slate-500 text-sm mt-2">{onUpload?'CSV-Datei hochladen um Daten zu sehen':'Warte auf Daten vom Bookmarklet...'}</p>
-                            </div></div>
                         ):(
-                            <div className={'grid gap-2 '+(compact?'grid-cols-4':'grid-cols-3')}>
-                                {agents.map((a,i)=><AgentCard key={i} a={a} compact={compact}/>)}
+                            <div>
+                                <div className="grid grid-cols-4 gap-1 mb-2">
+                                    {[['📞',a.anrufe,'Anrufe'],['📅',a.termine,'WVL'],['📦',a.nettos,'Netto'],['✅',a.erfolge,'Erfolge']].map(([ic,v,l],i)=>(
+                                        <div key={i} className="text-center p-1 rounded" style={{background:'rgba(255,255,255,0.04)'}}>
+                                            <div style={{fontSize:10}}>{ic}</div>
+                                            <div className="font-black text-emerald-400" style={{fontSize:compact?12:14}}>{v}</div>
+                                            <div style={{fontSize:7,color:'#64748b',fontWeight:600}}>{l}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-2 gap-1 mb-2">
+                                    <div className="text-center p-1 rounded" style={{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.15)'}}>
+                                        <div style={{fontSize:7,color:'#10b981',fontWeight:700}}>ANRUFE/H</div>
+                                        <div className="font-black text-emerald-300 text-sm">{a.anrufeH}</div>
+                                    </div>
+                                    <div className="text-center p-1 rounded" style={{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.15)'}}>
+                                        <div style={{fontSize:7,color:'#10b981',fontWeight:700}}>LOGINZEIT</div>
+                                        <div className="font-black text-emerald-300 text-sm">{a.loginzeit}h</div>
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    {[['Gespräch',a.talk],['Wartezeit',a.wait],['Pause',a.pause],['Nacharbeit',a.dispo]].map(([l,v],i)=>(
+                                        <div key={i}>
+                                            <div className="flex justify-between" style={{fontSize:8,fontWeight:700,color:'#64748b'}}><span>{l}</span><span className="text-emerald-400">{v}%</span></div>
+                                            <div className="h-1 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.06)'}}><div className="h-full rounded-full" style={{width:v+'%',background:'linear-gradient(90deg,#10b981,#14b8a6)'}}/></div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
                 </div>);
             };
+
+            const Panel=({title,data,color,isLive,isEkd,onUpload,fullWidth})=>{
+                const agents=data?.agents||[];
+                const sum=data?.summary||{};
+                const kpi=data?.kpi||{};
+                const updated=data?.updatedAt?new Date(data.updatedAt).toLocaleTimeString('de-DE'):'—';
+                const stale=data?.updatedAt?(Date.now()-new Date(data.updatedAt).getTime()>60000):true;
+                const activeAgents=isEkd?agents.filter(a=>a.status!=='abgemeldet'&&a.status!=='geblockt'):agents;
+                const compact=activeAgents.length>6;
+                const cols=fullWidth?(activeAgents.length<=4?4:activeAgents.length<=8?4:5):(compact?4:3);
+                return(
+                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                    <div className="px-4 py-3 flex items-center justify-between flex-shrink-0" style={{background:color+'15',borderBottom:'2px solid '+color+'40'}}>
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-white" style={{background:color}}>{title.charAt(0)}</div>
+                            <div><h2 className="text-white font-black text-lg">{title}</h2><p className="text-xs text-slate-400">{activeAgents.length} Agents • {updated}{stale&&data?' ⚠️ veraltet':''}</p></div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {isLive&&!stale&&<span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400" style={{animation:'pulse 2s infinite'}}/><span className="text-xs text-green-400 font-bold">LIVE</span></span>}
+                            {isLive&&stale&&data&&<span className="text-xs text-amber-400 font-bold">⏳ Warte auf Daten...</span>}
+                            {onUpload&&<button onClick={()=>fileRef.current?.click()} className="px-3 py-1 rounded-lg text-xs font-bold" style={{background:color+'20',color:color,border:'1px solid '+color+'40'}}>📄 CSV laden</button>}
+                        </div>
+                    </div>
+                    {/* KPI-Leiste */}
+                    {activeAgents.length>0&&(
+                        <div className="px-3 py-2 flex-shrink-0">
+                            {isEkd?(
+                                <div className="grid grid-cols-8 gap-2">
+                                    <StatCard icon="👥" value={sum.total||0} label="Aktiv" color={color}/>
+                                    <StatCard icon="📞" value={sum.belegt||0} label="Belegt" color={color}/>
+                                    <StatCard icon="✅" value={sum.frei||0} label="Frei" color={color}/>
+                                    <StatCard icon="📝" value={sum.nachbearbeitung||0} label="Nachb." color={color}/>
+                                    <StatCard icon="⏸️" value={sum.pause||0} label="Pause" color={color}/>
+                                    <StatCard icon="📅" value={sum.termine||0} label="Termine" color="#d4af37"/>
+                                    <StatCard icon="📋" value={sum.beendet||0} label="Beendet" color={color}/>
+                                    {kpi.avgGespraechszeit&&<StatCard icon="⏱️" value={kpi.avgGespraechszeit} label="Ø Gespr." color={color}/>}
+                                </div>
+                            ):(
+                                <div className="grid grid-cols-7 gap-2">
+                                    <StatCard icon="👥" value={sum.total||0} label="Agents" color={color}/>
+                                    <StatCard icon="📞" value={sum.aktiv||0} label="Aktiv" color={color}/>
+                                    <StatCard icon="⏳" value={sum.wartend||0} label="Wartend" color={color}/>
+                                    <StatCard icon="📊" value={sum.anrufe||0} label="Anrufe" color={color}/>
+                                    <StatCard icon="📅" value={sum.termine||0} label="WVL" color={color}/>
+                                    <StatCard icon="📦" value={sum.nettos||0} label="Netto" color={color}/>
+                                    <StatCard icon="✅" value={sum.erfolge||0} label="Erfolge" color={color}/>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    <div className="flex-1 overflow-y-auto px-3 pb-3">
+                        {activeAgents.length===0?(
+                            <div className="flex items-center justify-center h-full"><div className="text-center">
+                                <div style={{fontSize:48,opacity:0.3}}>{isLive?'📡':'📄'}</div>
+                                <p className="text-slate-500 text-sm mt-2">{isLive?'Warte auf Daten vom Bookmarklet...':'CSV-Datei hochladen oder Bookmarklet starten'}</p>
+                                <p className="text-slate-600 text-xs mt-1">{isLive?'Bookmarklet auf der Telefonanlage klicken':'Daten kommen alle 5 Sekunden automatisch'}</p>
+                            </div></div>
+                        ):(
+                            <div className={'grid gap-2 grid-cols-'+cols}>
+                                {activeAgents.map((a,i)=><AgentCard key={i} a={a} compact={compact} isEkd={isEkd}/>)}
+                            </div>
+                        )}
+                    </div>
+                </div>);
+            };
+
+            // Mode selection screen
+            if(!mode){
+                return(
+                <div className="fixed inset-0 bg-black flex flex-col z-50" style={{background:'linear-gradient(135deg,#0a0a0a,#0f172a)'}}>
+                    <div className="px-4 py-2 flex items-center gap-3 flex-shrink-0" style={{borderBottom:'1px solid rgba(255,255,255,0.08)',background:'rgba(0,0,0,0.5)'}}>
+                        <button onClick={onBack} className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5">← Zurück</button>
+                        <h1 className="text-white font-black text-lg">📊 Live-Dashboard</h1>
+                    </div>
+                    <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center px-6" style={{maxWidth:700}}>
+                            <div style={{fontSize:64,marginBottom:16}}>📊</div>
+                            <h2 className="text-2xl font-black text-white mb-2">Live-Dashboard</h2>
+                            <p className="text-slate-400 text-sm mb-8">Welche Daten möchtest du sehen?</p>
+                            <div className="grid grid-cols-3 gap-4">
+                                <button onClick={()=>setMode('vnr')} className="glass-card rounded-2xl p-6 hover:scale-[1.03] transition-transform" style={{border:'1.5px solid rgba(16,185,129,0.3)',background:'rgba(16,185,129,0.05)'}}>
+                                    <div className="text-3xl mb-3">📞</div>
+                                    <h3 className="text-lg font-bold text-emerald-300 mb-1">Nur VNR</h3>
+                                    <p className="text-xs text-slate-400">Easyfone Monitoring</p>
+                                    <p className="text-xs text-emerald-500 mt-2">Vollbild • Live</p>
+                                </button>
+                                <button onClick={()=>setMode('ekd')} className="glass-card rounded-2xl p-6 hover:scale-[1.03] transition-transform" style={{border:'1.5px solid rgba(59,130,246,0.3)',background:'rgba(59,130,246,0.05)'}}>
+                                    <div className="text-3xl mb-3">🏢</div>
+                                    <h3 className="text-lg font-bold text-blue-300 mb-1">Nur EKD</h3>
+                                    <p className="text-xs text-slate-400">VIER Monitoring</p>
+                                    <p className="text-xs text-blue-500 mt-2">Vollbild • Live</p>
+                                </button>
+                                <button onClick={()=>setMode('both')} className="glass-card rounded-2xl p-6 hover:scale-[1.03] transition-transform" style={{border:'1.5px solid rgba(212,175,55,0.3)',background:'rgba(212,175,55,0.05)'}}>
+                                    <div className="text-3xl mb-3">📊</div>
+                                    <h3 className="text-lg font-bold text-amber-300 mb-1">VNR & EKD</h3>
+                                    <p className="text-xs text-slate-400">Split-Screen</p>
+                                    <p className="text-xs text-amber-500 mt-2">Nebeneinander • Live</p>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>);
+            }
 
             return(
             <div className="fixed inset-0 bg-black flex flex-col z-50" style={{background:'linear-gradient(135deg,#0a0a0a,#0f172a)'}}>
@@ -13558,16 +13626,20 @@ Regeln:
                     <div className="flex items-center gap-3">
                         <button onClick={onBack} className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5">← Zurück</button>
                         <h1 className="text-white font-black text-lg">📊 Live-Dashboard</h1>
-                        <span className="text-xs text-slate-500">VNR & EKD Echtzeit-Monitoring</span>
+                        <div className="flex gap-1 ml-2">
+                            {['vnr','ekd','both'].map(m=>(
+                                <button key={m} onClick={()=>setMode(m)} className="px-2 py-1 rounded text-xs font-bold" style={{background:mode===m?'rgba(212,175,55,0.2)':'rgba(255,255,255,0.05)',color:mode===m?'#fbbf24':'#64748b',border:'1px solid '+(mode===m?'rgba(212,175,55,0.3)':'rgba(255,255,255,0.08)')}}>{m==='vnr'?'📞 VNR':m==='ekd'?'🏢 EKD':'📊 Beide'}</button>
+                            ))}
+                        </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {lastUpdate&&<span className="text-xs text-slate-500">Letztes Update: {lastUpdate.toLocaleTimeString('de-DE')}</span>}
+                        {lastUpdate&&<span className="text-xs text-slate-500">Update: {lastUpdate.toLocaleTimeString('de-DE')}</span>}
                     </div>
                 </div>
                 <div className="flex flex-1 overflow-hidden">
-                    <Panel title="VNR" data={vnrData} color="#10b981" isLive={true}/>
-                    <div className="w-px flex-shrink-0" style={{background:'rgba(255,255,255,0.1)'}}/>
-                    <Panel title="EKD" data={ekdData} color="#3b82f6" onUpload={true}/>
+                    {(mode==='vnr'||mode==='both')&&<Panel title="VNR" data={vnrData} color="#10b981" isLive={true} isEkd={false} fullWidth={mode==='vnr'}/>}
+                    {mode==='both'&&<div className="w-px flex-shrink-0" style={{background:'rgba(255,255,255,0.1)'}}/>}
+                    {(mode==='ekd'||mode==='both')&&<Panel title="EKD" data={ekdData} color="#3b82f6" isLive={true} isEkd={true} onUpload={true} fullWidth={mode==='ekd'}/>}
                 </div>
                 <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" onChange={handleCsvUpload} style={{display:'none'}}/>
             </div>);
