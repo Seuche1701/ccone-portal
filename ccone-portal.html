@@ -201,7 +201,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.8.4';
+        const APP_VERSION = '5.8.5';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -1194,7 +1194,7 @@ function getOrCreateSheet(){
                     {view==='user'&&<UserDashboard currentUser={currentUser} appData={appData} addResult={addResult} updateData={updateData} refreshData={refreshData} refreshUnoGamesOnly={refreshUnoGamesOnly} refreshPokerGamesOnly={refreshPokerGamesOnly} onLogout={handleLogout} showNotification={showNotification} onNavigate={navigateTo} onSwitchToAdmin={['admin','teamleiter','standardbenutzer'].includes(currentUser?.role)?()=>setView('choose'):null}/>}
                     {view==='user-training'&&<VNRTrainingCenter currentUser={currentUser} appData={appData} updateData={updateData} showNotification={showNotification} onLogout={handleLogout} onNavigate={navigateTo} refreshData={refreshData}/>}
                     {view==='user-coaching'&&<UserCoachingView currentUser={currentUser} appData={appData} updateData={updateData} showNotification={showNotification} onLogout={handleLogout} onNavigate={navigateTo} refreshData={refreshData}/>}
-                    {view==='live-dashboard'&&<LiveDashboard onBack={()=>setView('admin')} showNotification={showNotification}/>}
+                    {view==='live-dashboard'&&<LiveDashboard onBack={()=>setView('admin')} showNotification={showNotification} appData={appData}/>}
                     {/* === GLOBAL Pause/Message Popup === */}
                     {globalPauseModal&&(<div className="fixed inset-0 flex items-center justify-center" style={{zIndex:99999,background:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}}>
                         <div className="text-center animate-fade-in" style={{maxWidth:420}}>
@@ -1960,6 +1960,7 @@ function getOrCreateSheet(){
             const[speed,setSpeed]=useState('medium');
             const[priority,setPriority]=useState('normal');
             const[newsStandort,setNewsStandort]=useState('alle');
+            const[dashTarget,setDashTarget]=useState('');
             const news=appData.news||[];
             const CATS={info:{label:'ℹ️ Info',color:'#3b82f6'},update:{label:'🆕 Update',color:'#10b981'},warning:{label:'⚠️ Wichtig',color:'#f59e0b'},event:{label:'🎉 Event',color:'#8b5cf6'},tip:{label:'💡 Tipp',color:'#06b6d4'},urgent:{label:'🚨 Dringend',color:'#ef4444'}};
             const MODES=[{id:'card',label:'🃏 Karte',desc:'Standard-Karte'},{id:'ticker',label:'📜 Laufschrift',desc:'Scrollender Text'},{id:'alert',label:'🔔 Alert',desc:'Auffällige Meldung'},{id:'banner',label:'🏷️ Banner',desc:'Volle Breite'}];
@@ -1982,10 +1983,10 @@ function getOrCreateSheet(){
                 else if(snd==='fanfare'){[392,494,587,784].forEach((f,i)=>{const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.value=f;o.type='triangle';g.gain.value=0.15;g.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+i*0.15+0.5);o.start(ctx.currentTime+i*0.15);o.stop(ctx.currentTime+i*0.15+0.5)})}
                 else if(snd==='notification'){osc.frequency.value=600;osc.type='sine';gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.3);osc.start();osc.stop(ctx.currentTime+0.3);setTimeout(()=>{const o2=ctx.createOscillator();const g2=ctx.createGain();o2.connect(g2);g2.connect(ctx.destination);o2.frequency.value=800;o2.type='sine';g2.gain.value=0.12;g2.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.3);o2.start();o2.stop(ctx.currentTime+0.3)},200)}
             }catch(e){}};
-            const startEdit=(item)=>{setEditId(item.id);setTitle(item.title);setContent(item.content);setCategory(item.category||'info');setPinned(item.pinned||false);setDisplayMode(item.displayMode||'card');setBgColor(item.bgColor||'');setTextColor(item.textColor||'');setSound(item.sound||'none');setSpeed(item.speed||'medium');setPriority(item.priority||'normal');setNewsStandort(item.standort||'alle');setShowForm(true)};
-            const resetForm=()=>{setEditId(null);setTitle('');setContent('');setCategory('info');setPinned(false);setDisplayMode('card');setBgColor('');setTextColor('');setSound('none');setSpeed('medium');setPriority('normal');setNewsStandort('alle');setShowForm(false)};
+            const startEdit=(item)=>{setEditId(item.id);setTitle(item.title);setContent(item.content);setCategory(item.category||'info');setPinned(item.pinned||false);setDisplayMode(item.displayMode||'card');setBgColor(item.bgColor||'');setTextColor(item.textColor||'');setSound(item.sound||'none');setSpeed(item.speed||'medium');setPriority(item.priority||'normal');setNewsStandort(item.standort||'alle');setDashTarget(item.dashboardTarget||'');setShowForm(true)};
+            const resetForm=()=>{setEditId(null);setTitle('');setContent('');setCategory('info');setPinned(false);setDisplayMode('card');setBgColor('');setTextColor('');setSound('none');setSpeed('medium');setPriority('normal');setNewsStandort('alle');setDashTarget('');setShowForm(false)};
             const saveNews=async()=>{if(!title.trim()||!content.trim()){showNotification('Titel und Inhalt benötigt','error');return}
-                const item={id:editId||Date.now().toString(),title:title.trim(),content:content.trim(),category,pinned,displayMode,bgColor:bgColor||'',textColor:textColor||'',sound,speed,priority,standort:newsStandort||'alle',createdAt:editId?news.find(n=>n.id===editId)?.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),author:'Admin'};
+                const item={id:editId||Date.now().toString(),title:title.trim(),content:content.trim(),category,pinned,displayMode,bgColor:bgColor||'',textColor:textColor||'',sound,speed,priority,standort:newsStandort||'alle',dashboardTarget:dashTarget||'',createdAt:editId?news.find(n=>n.id===editId)?.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),author:'Admin'};
                 const updated=editId?news.map(n=>n.id===editId?item:n):[item,...news];
                 await updateData({...appData,news:updated});resetForm();showNotification(editId?'News aktualisiert!':'News veröffentlicht!')};
             const deleteNews=async(id)=>{if(!confirm('News löschen?'))return;await updateData({...appData,news:news.filter(n=>n.id!==id)});showNotification('Gelöscht')};
@@ -2011,6 +2012,7 @@ function getOrCreateSheet(){
                                     <div><label className="block text-xs text-slate-500 mb-0.5">Anzeige</label><select value={displayMode} onChange={e=>setDisplayMode(e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs">{MODES.map(m=><option key={m.id} value={m.id} style={{background:'#1e293b'}}>{m.label}</option>)}</select></div>
                                     <div><label className="block text-xs text-slate-500 mb-0.5">Priorität</label><select value={priority} onChange={e=>setPriority(e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs"><option value="normal" style={{background:'#1e293b'}}>Normal</option><option value="urgent" style={{background:'#1e293b'}}>🚨 Dringend</option></select></div>
                                     <div><label className="block text-xs text-slate-500 mb-0.5">📍 Standort</label><select value={newsStandort} onChange={e=>setNewsStandort(e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs"><option value="alle" style={{background:'#1e293b'}}>Alle Standorte</option><option value="berlin" style={{background:'#1e293b'}}>Berlin</option><option value="chemnitz" style={{background:'#1e293b'}}>Chemnitz</option></select></div>
+                                    <div><label className="block text-xs text-slate-500 mb-0.5">📊 Dashboard</label><select value={dashTarget} onChange={e=>setDashTarget(e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs"><option value="" style={{background:'#1e293b'}}>— Nicht im Dashboard</option><option value="vnr" style={{background:'#1e293b'}}>📞 VNR Dashboard</option><option value="ekd" style={{background:'#1e293b'}}>🏢 EKD Dashboard</option><option value="both" style={{background:'#1e293b'}}>📊 Beide Dashboards</option></select></div>
                                     <label className="flex items-center gap-1.5 cursor-pointer mt-3"><input type="checkbox" checked={pinned} onChange={e=>setPinned(e.target.checked)} className="w-3.5 h-3.5 rounded accent-yellow-500"/><span className="text-xs text-slate-300">📌 Pinnen</span></label>
                                 </div>
                             </div>
@@ -2054,6 +2056,7 @@ function getOrCreateSheet(){
                                         <p className="text-xs text-slate-500 truncate">{item.content}</p>
                                     </div>
                                     {item.bgColor&&<div className="w-4 h-4 rounded-full flex-shrink-0" style={{background:item.bgColor,border:'1px solid rgba(255,255,255,0.2)'}} title={item.bgColor}/>}
+                                    {item.dashboardTarget&&<span className="px-1.5 py-0.5 rounded text-xs font-bold flex-shrink-0" style={{background:'rgba(212,175,55,0.15)',color:'#d4af37',border:'1px solid rgba(212,175,55,0.2)'}}>📊 {item.dashboardTarget==='vnr'?'VNR':item.dashboardTarget==='ekd'?'EKD':'Beide'}</span>}
                                 </div>
                                 <div className="flex items-center gap-1 flex-shrink-0 ml-2">
                                     <span className="text-xs text-slate-600">{new Date(item.createdAt).toLocaleDateString('de-DE')}</span>
@@ -13001,7 +13004,7 @@ Regeln:
                     <div><div className="text-lg font-black text-white leading-none">{s.value}</div><div className="text-xs text-slate-500">{s.label}</div></div>
                 </div>))}</div>
                 {/* News banner - supports card/ticker/alert/banner modes */}
-                {(()=>{const news=(appData.news||[]).filter(n=>n&&(!myStandort||!n.standort||n.standort==='alle'||n.standort===myStandort));if(news.length===0)return null;const sorted=[...news].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||(b.priority==='urgent'?1:0)-(a.priority==='urgent'?1:0)||new Date(b.createdAt)-new Date(a.createdAt));
+                {(()=>{const news=(appData.news||[]).filter(n=>n&&!n.dashboardTarget&&(!myStandort||!n.standort||n.standort==='alle'||n.standort===myStandort));if(news.length===0)return null;const sorted=[...news].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||(b.priority==='urgent'?1:0)-(a.priority==='urgent'?1:0)||new Date(b.createdAt)-new Date(a.createdAt));
                     const CATS={info:{color:'#3b82f6'},update:{color:'#10b981'},warning:{color:'#f59e0b'},event:{color:'#8b5cf6'},tip:{color:'#06b6d4'},urgent:{color:'#ef4444'}};
                     const playSound=(snd)=>{if(!snd||snd==='none')return;try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const osc=ctx.createOscillator();const gain=ctx.createGain();osc.connect(gain);gain.connect(ctx.destination);gain.gain.value=0.12;
                         if(snd==='ding'){osc.frequency.value=800;osc.type='sine';gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.5);osc.start();osc.stop(ctx.currentTime+0.5)}
@@ -13389,12 +13392,18 @@ Regeln:
 {userResults.length>0&&(<div className="mt-8"><h2 className="text-xl font-bold text-white mb-4">📊 Meine Ergebnisse</h2><div className="glass-card rounded-2xl overflow-hidden" style={{maxHeight:"calc(100vh - 300px)",overflowY:"auto"}}><table className="w-full"><thead className="bg-slate-800/50"><tr><th className="text-left px-6 py-3 text-sm font-semibold text-slate-600">Quiz</th><th className="text-left px-6 py-3 text-sm font-semibold text-slate-600">Ergebnis</th><th className="text-left px-6 py-3 text-sm font-semibold text-slate-600">Status</th><th className="text-left px-6 py-3 text-sm font-semibold text-slate-600">Datum</th><th className="text-right px-6 py-3 text-sm font-semibold text-slate-600">Aktion</th></tr></thead><tbody className="divide-y divide-slate-100">{userResults.slice().reverse().slice(0,10).map((r,idx)=>{const quiz=appData.quizzes.find(q=>q.id===r.quizId);return(<tr key={idx} className="hover:bg-slate-800/30 transition-colors"><td className="px-6 py-3 font-medium text-white">{quiz?.title||'?'}</td><td className="px-6 py-3"><span className={`font-semibold ${r.score>=80?'text-green-600':'text-red-600'}`}>{r.score}%</span></td><td className="px-6 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.score>=80?'bg-green-100 text-green-700':'bg-red-900/30 text-red-300'}`}>{r.score>=80?'✅ Bestanden':'❌ Nicht best.'}</span>{r.feedback&&<span className="ml-1">💬</span>}{r.detailsReleased&&<span className="ml-1">📋</span>}</td><td className="px-6 py-3 text-slate-500 text-sm">{new Date(r.completedAt).toLocaleString('de-DE')}</td><td className="px-6 py-3 text-right">{r.detailsReleased?(<button onClick={()=>setViewDetailsModal(r)} className="text-emerald-600 hover:underline text-sm font-medium">Details →</button>):(<button onClick={()=>{setMessageModal(r);setMessageText('')}} className="text-blue-600 hover:underline text-sm font-medium">{r.userMessage?'✓ Angefragt':'Freigabe anfragen'}</button>)}</td></tr>)})}</tbody></table></div></div>)}
 </main></div></div>)}
 
-        function LiveDashboard({onBack,showNotification}){
+        function LiveDashboard({onBack,showNotification,appData}){
             const[mode,setMode]=useState(null);
             const[vnrData,setVnrData]=useState(null);
             const[ekdData,setEkdData]=useState(null);
             const[lastUpdate,setLastUpdate]=useState(null);
             const fileRef=useRef(null);
+
+            // Dashboard-News aus appData filtern
+            const dashNews=React.useMemo(()=>{
+                if(!mode)return[];
+                return(appData?.news||[]).filter(n=>n.dashboardTarget&&(n.dashboardTarget==='both'||n.dashboardTarget===mode||(mode==='both'&&(n.dashboardTarget==='vnr'||n.dashboardTarget==='ekd')))).sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||new Date(b.createdAt)-new Date(a.createdAt));
+            },[appData?.news,mode]);
 
             // Poll from Supabase based on mode
             useEffect(()=>{
@@ -13445,69 +13454,69 @@ Regeln:
             };
 
             const StatCard=({icon,value,label,color})=>(
-                <div className="text-center p-2 rounded-xl" style={{background:'rgba(255,255,255,0.06)'}}>
-                    <div style={{fontSize:16}}>{icon}</div>
-                    <div className="text-xl font-black" style={{color:color||'#10b981'}}>{value}</div>
-                    <div className="text-xs text-slate-500 font-semibold" style={{fontSize:8,textTransform:'uppercase'}}>{label}</div>
+                <div className="text-center p-3 rounded-xl" style={{background:'rgba(255,255,255,0.06)'}}>
+                    <div style={{fontSize:20}}>{icon}</div>
+                    <div className="text-2xl font-black" style={{color:color||'#10b981'}}>{value}</div>
+                    <div className="text-xs text-slate-400 font-bold" style={{textTransform:'uppercase'}}>{label}</div>
                 </div>
             );
 
-            const AgentCard=({a,compact,isEkd})=>{
+            const AgentCard=({a,isEkd})=>{
                 const sc=isEkd?
-                    ({belegt:{bg:'rgba(239,68,68,0.15)',c:'#f87171'},frei:{bg:'rgba(59,130,246,0.15)',c:'#60a5fa'},Pause:{bg:'rgba(245,158,11,0.15)',c:'#fbbf24'},Nachbearbeitung:{bg:'rgba(168,85,247,0.15)',c:'#c084fc'}}[a.status]||{bg:'rgba(100,116,139,0.15)',c:'#94a3b8'}):
-                    ({Gespräch:{bg:'rgba(239,68,68,0.15)',c:'#f87171'},Nacharbeit:{bg:'rgba(245,158,11,0.15)',c:'#fbbf24'},Wartend:{bg:'rgba(16,185,129,0.15)',c:'#34d399'}}[a.status]||{bg:'rgba(16,185,129,0.15)',c:'#34d399'});
+                    ({belegt:{bg:'rgba(239,68,68,0.2)',c:'#f87171',border:'rgba(239,68,68,0.3)'},frei:{bg:'rgba(59,130,246,0.2)',c:'#60a5fa',border:'rgba(59,130,246,0.3)'},Pause:{bg:'rgba(245,158,11,0.2)',c:'#fbbf24',border:'rgba(245,158,11,0.3)'},Nachbearbeitung:{bg:'rgba(168,85,247,0.2)',c:'#c084fc',border:'rgba(168,85,247,0.3)'}}[a.status]||{bg:'rgba(100,116,139,0.15)',c:'#94a3b8',border:'rgba(100,116,139,0.2)'}):
+                    ({Gespräch:{bg:'rgba(239,68,68,0.2)',c:'#f87171',border:'rgba(239,68,68,0.3)'},Nacharbeit:{bg:'rgba(245,158,11,0.2)',c:'#fbbf24',border:'rgba(245,158,11,0.3)'},Wartend:{bg:'rgba(16,185,129,0.2)',c:'#34d399',border:'rgba(16,185,129,0.3)'}}[a.status]||{bg:'rgba(16,185,129,0.15)',c:'#34d399',border:'rgba(16,185,129,0.2)'});
                 const si=isEkd?
                     ({belegt:'📞',frei:'✅',Pause:'⏸️',Nachbearbeitung:'📝'}[a.status]||'⏳'):
                     ({Gespräch:'📞',Nacharbeit:'📝',Wartend:'⏳'}[a.status]||'⏳');
                 return(
-                <div className="rounded-xl overflow-hidden" style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)'}}>
-                    <div className="px-3 py-2 flex items-center justify-between" style={{background:isEkd?'rgba(59,130,246,0.08)':'rgba(16,185,129,0.08)',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-                        <div className="flex items-center gap-2 min-w-0">
-                            <span style={{fontSize:14}}>{si}</span>
-                            <div className="min-w-0"><div className="text-white font-bold text-xs truncate">{a.name}</div><div className="text-slate-500" style={{fontSize:9}}>{a.kampagne}</div></div>
+                <div className="rounded-xl overflow-hidden" style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)'}}>
+                    <div className="px-4 py-3 flex items-center justify-between" style={{background:isEkd?'rgba(59,130,246,0.08)':'rgba(16,185,129,0.08)',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+                        <div className="flex items-center gap-3 min-w-0">
+                            <span style={{fontSize:18}}>{si}</span>
+                            <div className="min-w-0"><div className="text-white font-bold text-sm truncate">{a.name}</div><div className="text-slate-500 text-xs">{a.kampagne}</div></div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                            <span className="px-2 py-0.5 rounded text-xs font-bold" style={{background:sc.bg,color:sc.c,fontSize:9}}>{a.status||'—'}</span>
-                            {a.statuszeit&&<div className="text-white font-black text-sm mt-0.5">{a.statuszeit}</div>}
+                            <span className="px-2 py-1 rounded-lg text-xs font-bold" style={{background:sc.bg,color:sc.c,border:'1px solid '+sc.border}}>{a.status||'—'}</span>
+                            {a.statuszeit&&<div className="text-white font-black text-base mt-1">{a.statuszeit}</div>}
                         </div>
                     </div>
-                    <div className="px-3 py-2">
+                    <div className="px-4 py-3">
                         {isEkd?(
-                            <div className="grid grid-cols-3 gap-1">
-                                {[['📅',a.termin||0,'Termine'],['📋',a.beendet||0,'Beendet'],['❌',a.ne||0,'NE']].map(([ic,v,l],i)=>(
-                                    <div key={i} className="text-center p-1 rounded" style={{background:'rgba(255,255,255,0.04)'}}>
-                                        <div style={{fontSize:10}}>{ic}</div>
-                                        <div className="font-black text-blue-400" style={{fontSize:compact?12:14}}>{v}</div>
-                                        <div style={{fontSize:7,color:'#64748b',fontWeight:600}}>{l}</div>
+                            <div className="grid grid-cols-3 gap-2">
+                                {[['📅',a.termin||0,'Termine','#d4af37'],['📋',a.beendet||0,'Beendet','#60a5fa'],['❌',a.ne||0,'NE','#f87171']].map(([ic,v,l,col],i)=>(
+                                    <div key={i} className="text-center p-2 rounded-lg" style={{background:'rgba(255,255,255,0.04)'}}>
+                                        <div style={{fontSize:14}}>{ic}</div>
+                                        <div className="font-black text-lg" style={{color:col}}>{v}</div>
+                                        <div className="text-xs text-slate-500 font-bold">{l}</div>
                                     </div>
                                 ))}
                             </div>
                         ):(
                             <div>
-                                <div className="grid grid-cols-4 gap-1 mb-2">
+                                <div className="grid grid-cols-4 gap-2 mb-2">
                                     {[['📞',a.anrufe,'Anrufe'],['📅',a.termine,'WVL'],['📦',a.nettos,'Netto'],['✅',a.erfolge,'Erfolge']].map(([ic,v,l],i)=>(
-                                        <div key={i} className="text-center p-1 rounded" style={{background:'rgba(255,255,255,0.04)'}}>
-                                            <div style={{fontSize:10}}>{ic}</div>
-                                            <div className="font-black text-emerald-400" style={{fontSize:compact?12:14}}>{v}</div>
-                                            <div style={{fontSize:7,color:'#64748b',fontWeight:600}}>{l}</div>
+                                        <div key={i} className="text-center p-2 rounded-lg" style={{background:'rgba(255,255,255,0.04)'}}>
+                                            <div style={{fontSize:14}}>{ic}</div>
+                                            <div className="font-black text-emerald-400 text-lg">{v}</div>
+                                            <div className="text-xs text-slate-500 font-bold">{l}</div>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="grid grid-cols-2 gap-1 mb-2">
-                                    <div className="text-center p-1 rounded" style={{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.15)'}}>
-                                        <div style={{fontSize:7,color:'#10b981',fontWeight:700}}>ANRUFE/H</div>
-                                        <div className="font-black text-emerald-300 text-sm">{a.anrufeH}</div>
+                                <div className="grid grid-cols-2 gap-2 mb-2">
+                                    <div className="text-center p-2 rounded-lg" style={{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.15)'}}>
+                                        <div className="text-xs text-emerald-500 font-bold">ANRUFE/H</div>
+                                        <div className="font-black text-emerald-300 text-base">{a.anrufeH}</div>
                                     </div>
-                                    <div className="text-center p-1 rounded" style={{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.15)'}}>
-                                        <div style={{fontSize:7,color:'#10b981',fontWeight:700}}>LOGINZEIT</div>
-                                        <div className="font-black text-emerald-300 text-sm">{a.loginzeit}h</div>
+                                    <div className="text-center p-2 rounded-lg" style={{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.15)'}}>
+                                        <div className="text-xs text-emerald-500 font-bold">LOGINZEIT</div>
+                                        <div className="font-black text-emerald-300 text-base">{a.loginzeit}h</div>
                                     </div>
                                 </div>
-                                <div className="space-y-1">
+                                <div className="space-y-1.5">
                                     {[['Gespräch',a.talk],['Wartezeit',a.wait],['Pause',a.pause],['Nacharbeit',a.dispo]].map(([l,v],i)=>(
                                         <div key={i}>
-                                            <div className="flex justify-between" style={{fontSize:8,fontWeight:700,color:'#64748b'}}><span>{l}</span><span className="text-emerald-400">{v}%</span></div>
-                                            <div className="h-1 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.06)'}}><div className="h-full rounded-full" style={{width:v+'%',background:'linear-gradient(90deg,#10b981,#14b8a6)'}}/></div>
+                                            <div className="flex justify-between text-xs font-bold" style={{color:'#64748b'}}><span>{l}</span><span className="text-emerald-400">{v}%</span></div>
+                                            <div className="h-1.5 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.06)'}}><div className="h-full rounded-full" style={{width:v+'%',background:'linear-gradient(90deg,#10b981,#14b8a6)'}}/></div>
                                         </div>
                                     ))}
                                 </div>
@@ -13524,26 +13533,26 @@ Regeln:
                 const updated=data?.updatedAt?new Date(data.updatedAt).toLocaleTimeString('de-DE'):'—';
                 const stale=data?.updatedAt?(Date.now()-new Date(data.updatedAt).getTime()>60000):true;
                 const activeAgents=isEkd?agents.filter(a=>a.status!=='abgemeldet'&&a.status!=='geblockt'):agents;
-                const compact=activeAgents.length>6;
-                const cols=fullWidth?(activeAgents.length<=4?4:activeAgents.length<=8?4:5):(compact?4:3);
+                // Auto-adjust: Spalten basierend auf Agent-Anzahl + Breite
+                const n=activeAgents.length;
+                const cols=fullWidth?(n<=2?2:n<=4?2:n<=6?3:n<=9?3:n<=12?4:n<=16?4:5):(n<=2?2:n<=4?2:n<=6?3:n<=9?3:4);
                 return(
                 <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                    <div className="px-4 py-3 flex items-center justify-between flex-shrink-0" style={{background:color+'15',borderBottom:'2px solid '+color+'40'}}>
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-white" style={{background:color}}>{title.charAt(0)}</div>
-                            <div><h2 className="text-white font-black text-lg">{title}</h2><p className="text-xs text-slate-400">{activeAgents.length} Agents • {updated}{stale&&data?' ⚠️ veraltet':''}</p></div>
+                    <div className="px-5 py-4 flex items-center justify-between flex-shrink-0" style={{background:color+'15',borderBottom:'2px solid '+color+'40'}}>
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-white text-lg" style={{background:color}}>{title.charAt(0)}</div>
+                            <div><h2 className="text-white font-black text-xl">{title}</h2><p className="text-sm text-slate-400">{activeAgents.length} Agents aktiv • Stand: {updated}{stale&&data?' ⚠️ veraltet':''}</p></div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            {isLive&&!stale&&<span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400" style={{animation:'pulse 2s infinite'}}/><span className="text-xs text-green-400 font-bold">LIVE</span></span>}
-                            {isLive&&stale&&data&&<span className="text-xs text-amber-400 font-bold">⏳ Warte auf Daten...</span>}
-                            {onUpload&&<button onClick={()=>fileRef.current?.click()} className="px-3 py-1 rounded-lg text-xs font-bold" style={{background:color+'20',color:color,border:'1px solid '+color+'40'}}>📄 CSV laden</button>}
+                        <div className="flex items-center gap-3">
+                            {isLive&&!stale&&<span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-400" style={{animation:'pulse 2s infinite'}}/><span className="text-sm text-green-400 font-bold">LIVE</span></span>}
+                            {isLive&&stale&&data&&<span className="text-sm text-amber-400 font-bold">⏳ Warte auf Daten...</span>}
+                            {onUpload&&<button onClick={()=>fileRef.current?.click()} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:color+'20',color:color,border:'1px solid '+color+'40'}}>📄 CSV laden</button>}
                         </div>
                     </div>
-                    {/* KPI-Leiste */}
                     {activeAgents.length>0&&(
-                        <div className="px-3 py-2 flex-shrink-0">
+                        <div className="px-4 py-3 flex-shrink-0">
                             {isEkd?(
-                                <div className="grid grid-cols-8 gap-2">
+                                <div className="grid grid-cols-8 gap-3">
                                     <StatCard icon="👥" value={sum.total||0} label="Aktiv" color={color}/>
                                     <StatCard icon="📞" value={sum.belegt||0} label="Belegt" color={color}/>
                                     <StatCard icon="✅" value={sum.frei||0} label="Frei" color={color}/>
@@ -13551,10 +13560,10 @@ Regeln:
                                     <StatCard icon="⏸️" value={sum.pause||0} label="Pause" color={color}/>
                                     <StatCard icon="📅" value={sum.termine||0} label="Termine" color="#d4af37"/>
                                     <StatCard icon="📋" value={sum.beendet||0} label="Beendet" color={color}/>
-                                    {kpi.avgGespraechszeit&&<StatCard icon="⏱️" value={kpi.avgGespraechszeit} label="Ø Gespr." color={color}/>}
+                                    {kpi.avgGespraechszeit?<StatCard icon="⏱️" value={kpi.avgGespraechszeit} label="Ø Gespr." color={color}/>:<StatCard icon="📊" value={kpi.toGo||0} label="ToGo" color={color}/>}
                                 </div>
                             ):(
-                                <div className="grid grid-cols-7 gap-2">
+                                <div className="grid grid-cols-7 gap-3">
                                     <StatCard icon="👥" value={sum.total||0} label="Agents" color={color}/>
                                     <StatCard icon="📞" value={sum.aktiv||0} label="Aktiv" color={color}/>
                                     <StatCard icon="⏳" value={sum.wartend||0} label="Wartend" color={color}/>
@@ -13566,16 +13575,16 @@ Regeln:
                             )}
                         </div>
                     )}
-                    <div className="flex-1 overflow-y-auto px-3 pb-3">
+                    <div className="flex-1 overflow-y-auto px-4 pb-4">
                         {activeAgents.length===0?(
                             <div className="flex items-center justify-center h-full"><div className="text-center">
-                                <div style={{fontSize:48,opacity:0.3}}>{isLive?'📡':'📄'}</div>
-                                <p className="text-slate-500 text-sm mt-2">{isLive?'Warte auf Daten vom Bookmarklet...':'CSV-Datei hochladen oder Bookmarklet starten'}</p>
-                                <p className="text-slate-600 text-xs mt-1">{isLive?'Bookmarklet auf der Telefonanlage klicken':'Daten kommen alle 5 Sekunden automatisch'}</p>
+                                <div style={{fontSize:56,opacity:0.3}}>{isLive?'📡':'📄'}</div>
+                                <p className="text-slate-400 text-base mt-3 font-medium">{isLive?'Warte auf Daten vom Bookmarklet...':'CSV-Datei hochladen oder Bookmarklet starten'}</p>
+                                <p className="text-slate-600 text-sm mt-1">{isLive?'Bookmarklet auf der Telefonanlage klicken':'Daten kommen alle 5 Sekunden automatisch'}</p>
                             </div></div>
                         ):(
-                            <div className={'grid gap-2 grid-cols-'+cols}>
-                                {activeAgents.map((a,i)=><AgentCard key={i} a={a} compact={compact} isEkd={isEkd}/>)}
+                            <div className={'grid gap-3 grid-cols-'+cols}>
+                                {activeAgents.map((a,i)=><AgentCard key={a.name||i} a={a} isEkd={isEkd}/>)}
                             </div>
                         )}
                     </div>
@@ -13622,18 +13631,18 @@ Regeln:
 
             return(
             <div className="fixed inset-0 bg-black flex flex-col z-50" style={{background:'linear-gradient(135deg,#0a0a0a,#0f172a)'}}>
-                <div className="px-4 py-2 flex items-center justify-between flex-shrink-0" style={{borderBottom:'1px solid rgba(255,255,255,0.08)',background:'rgba(0,0,0,0.5)'}}>
-                    <div className="flex items-center gap-3">
-                        <button onClick={onBack} className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5">← Zurück</button>
-                        <h1 className="text-white font-black text-lg">📊 Live-Dashboard</h1>
-                        <div className="flex gap-1 ml-2">
+                <div className="px-5 py-3 flex items-center justify-between flex-shrink-0" style={{borderBottom:'1px solid rgba(255,255,255,0.08)',background:'rgba(0,0,0,0.5)'}}>
+                    <div className="flex items-center gap-4">
+                        <button onClick={onBack} className="px-4 py-2 rounded-lg text-sm font-bold text-slate-400 hover:text-white hover:bg-white/5">← Zurück</button>
+                        <h1 className="text-white font-black text-xl">📊 Live-Dashboard</h1>
+                        <div className="flex gap-2 ml-3">
                             {['vnr','ekd','both'].map(m=>(
-                                <button key={m} onClick={()=>setMode(m)} className="px-2 py-1 rounded text-xs font-bold" style={{background:mode===m?'rgba(212,175,55,0.2)':'rgba(255,255,255,0.05)',color:mode===m?'#fbbf24':'#64748b',border:'1px solid '+(mode===m?'rgba(212,175,55,0.3)':'rgba(255,255,255,0.08)')}}>{m==='vnr'?'📞 VNR':m==='ekd'?'🏢 EKD':'📊 Beide'}</button>
+                                <button key={m} onClick={()=>setMode(m)} className="px-3 py-1.5 rounded-lg text-sm font-bold transition-all" style={{background:mode===m?'rgba(212,175,55,0.2)':'rgba(255,255,255,0.05)',color:mode===m?'#fbbf24':'#64748b',border:'1px solid '+(mode===m?'rgba(212,175,55,0.3)':'rgba(255,255,255,0.08)'),transform:mode===m?'scale(1.05)':'scale(1)'}}>{m==='vnr'?'📞 VNR':m==='ekd'?'🏢 EKD':'📊 Beide'}</button>
                             ))}
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        {lastUpdate&&<span className="text-xs text-slate-500">Update: {lastUpdate.toLocaleTimeString('de-DE')}</span>}
+                    <div className="flex items-center gap-3">
+                        {lastUpdate&&<span className="text-sm text-slate-400">Update: {lastUpdate.toLocaleTimeString('de-DE')}</span>}
                     </div>
                 </div>
                 <div className="flex flex-1 overflow-hidden">
@@ -13641,6 +13650,50 @@ Regeln:
                     {mode==='both'&&<div className="w-px flex-shrink-0" style={{background:'rgba(255,255,255,0.1)'}}/>}
                     {(mode==='ekd'||mode==='both')&&<Panel title="EKD" data={ekdData} color="#3b82f6" isLive={true} isEkd={true} onUpload={true} fullWidth={mode==='ekd'}/>}
                 </div>
+                {/* News-Leiste unten */}
+                {dashNews.length>0&&(
+                <div className="flex-shrink-0" style={{borderTop:'2px solid rgba(255,255,255,0.1)',background:'rgba(0,0,0,0.6)'}}>
+                    <div className="px-4 py-3 space-y-2" style={{maxHeight:220,overflowY:'auto'}}>
+                        {dashNews.map(item=>{
+                            const CATS={info:{label:'ℹ️',color:'#3b82f6'},update:{label:'🆕',color:'#10b981'},warning:{label:'⚠️',color:'#f59e0b'},event:{label:'🎉',color:'#8b5cf6'},tip:{label:'💡',color:'#06b6d4'},urgent:{label:'🚨',color:'#ef4444'}};
+                            const cat=CATS[item.category]||CATS.info;
+                            const dm=item.displayMode||'card';
+                            const bg=item.bgColor||'';
+                            const tc=item.textColor||'#fff';
+                            const spd={slow:20,medium:12,fast:6}[item.speed]||12;
+                            if(dm==='ticker')return(
+                                <div key={item.id} className="rounded-xl overflow-hidden py-2 px-4" style={{background:bg||'rgba(255,255,255,0.04)',border:'1px solid '+(bg||'rgba(255,255,255,0.1)')}}>
+                                    <div style={{color:tc,fontSize:18,fontWeight:800,whiteSpace:'nowrap',animation:'marquee '+spd+'s linear infinite'}}>
+                                        {item.pinned&&'📌 '}{cat.label} {item.title} — {item.content} +++ {item.title} — {item.content} +++
+                                    </div>
+                                </div>
+                            );
+                            if(dm==='alert')return(
+                                <div key={item.id} className="rounded-xl p-4 text-center" style={{background:bg||'rgba(239,68,68,0.1)',border:'2px solid '+(bg||'#ef4444')}}>
+                                    {item.priority==='urgent'&&<div className="text-2xl mb-1">🚨</div>}
+                                    <div style={{color:tc,fontWeight:900,fontSize:20}}>{item.pinned&&'📌 '}{item.title}</div>
+                                    <div style={{color:tc+'cc',fontSize:14,marginTop:4}}>{item.content}</div>
+                                </div>
+                            );
+                            if(dm==='banner')return(
+                                <div key={item.id} className="rounded-xl p-4" style={{background:bg?'linear-gradient(135deg,'+bg+','+bg+'dd)':'linear-gradient(135deg,#2563eb,#7c3aed)'}}>
+                                    <div className="flex items-center gap-3">
+                                        {item.pinned&&<span className="text-xl">📌</span>}
+                                        <div><div style={{color:tc,fontWeight:900,fontSize:18}}>{item.title}</div><div style={{color:tc+'cc',fontSize:13}}>{item.content}</div></div>
+                                    </div>
+                                </div>
+                            );
+                            return(
+                                <div key={item.id} className="rounded-xl p-4 flex items-start gap-3" style={{background:bg||'rgba(255,255,255,0.04)',borderLeft:'4px solid '+(bg||cat.color)}}>
+                                    <span className="text-xl flex-shrink-0">{item.pinned?'📌':cat.label}</span>
+                                    <div><div style={{color:tc,fontWeight:800,fontSize:16}}>{item.title}</div><div style={{color:tc+'aa',fontSize:13,marginTop:2}}>{item.content}</div></div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+                )}
+                <style>{`@keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}`}</style>
                 <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" onChange={handleCsvUpload} style={{display:'none'}}/>
             </div>);
         }
