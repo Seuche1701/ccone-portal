@@ -77,6 +77,25 @@
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.7}}
         .pulse-green{animation:pulse-green 2s infinite}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes dbFadeOut{from{opacity:1}to{opacity:0}}
+        @keyframes slideInLeft{from{opacity:0;transform:translateX(-100vw)}to{opacity:1;transform:translateX(0)}}
+        @keyframes slideOutLeft{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(-100vw)}}
+        @keyframes slideInRight{from{opacity:0;transform:translateX(100vw)}to{opacity:1;transform:translateX(0)}}
+        @keyframes slideOutRight{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(100vw)}}
+        @keyframes slideInUp{from{opacity:0;transform:translateY(100vh)}to{opacity:1;transform:translateY(0)}}
+        @keyframes slideOutUp{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-100vh)}}
+        @keyframes slideInDown{from{opacity:0;transform:translateY(-100vh)}to{opacity:1;transform:translateY(0)}}
+        @keyframes slideOutDown{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(100vh)}}
+        @keyframes zoomIn{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}
+        @keyframes zoomOut{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(0)}}
+        @keyframes bounceIn{0%{opacity:0;transform:scale(0.3)}50%{opacity:1;transform:scale(1.1)}70%{transform:scale(0.9)}100%{transform:scale(1)}}
+        @keyframes bounceOut{0%{transform:scale(1)}30%{transform:scale(1.1)}100%{opacity:0;transform:scale(0.3)}}
+        @keyframes rotateIn{from{opacity:0;transform:rotate(-200deg) scale(0)}to{opacity:1;transform:rotate(0) scale(1)}}
+        @keyframes rotateOut{from{opacity:1;transform:rotate(0) scale(1)}to{opacity:0;transform:rotate(200deg) scale(0)}}
+        @keyframes flipInX{from{opacity:0;transform:perspective(400px) rotateX(90deg)}to{opacity:1;transform:perspective(400px) rotateX(0)}}
+        @keyframes flipOutX{from{opacity:1;transform:perspective(400px) rotateX(0)}to{opacity:0;transform:perspective(400px) rotateX(90deg)}}
+        @keyframes flipInY{from{opacity:0;transform:perspective(400px) rotateY(90deg)}to{opacity:1;transform:perspective(400px) rotateY(0)}}
+        @keyframes flipOutY{from{opacity:1;transform:perspective(400px) rotateY(0)}to{opacity:0;transform:perspective(400px) rotateY(90deg)}}
         .animate-spin{animation:spin 1s linear infinite}
         @keyframes poker-glow{0%,100%{opacity:0.4}50%{opacity:0.65}}
         .poker-btn:hover{transform:translateY(-2px)!important;filter:brightness(1.15)!important}
@@ -201,7 +220,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.9.3';
+        const APP_VERSION = '5.9.4';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -1652,13 +1671,13 @@ function getOrCreateSheet(){
                 await updateData({...appData,termine:nt,rewardsPoints:pts,termineConfig:{...appData.termineConfig,pointsPerTermin,pptVNR}});
                 showNotification(imp+' Zeilen, '+tot+' Termine'+(aw>0?', +'+aw+' Pkt (nur Differenz)':''));setParsed(null);setPasteData('')};
             // VNR manual save
-            const initVnrEntries=()=>{const existing={};vnrAgents.forEach(u=>{const t=termine.find(t=>t.source==='vnr'&&t.agentId===u.id&&t.date===vnrDate);existing[u.id]=t?t.count:''});setVnrEntries(existing)};
-            const initEkdEntries=()=>{const existing={};ekdAgents.forEach(u=>{const t=termine.find(t=>(t.source||'ekd')==='ekd'&&t.agentId===u.id&&t.date===ekdDate);existing[u.id]=t?t.count:''});setEkdEntries(existing)};
+            const initVnrEntries=()=>{const existing={};vnrAgents.forEach(u=>{const t=termine.find(t=>(t.source==='vnr'||t.source==='vnr-live')&&t.agentId===u.id&&t.date===vnrDate);existing[u.id]=t?t.count:''});setVnrEntries(existing)};
+            const initEkdEntries=()=>{const existing={};ekdAgents.forEach(u=>{const t=termine.find(t=>((t.source||'ekd')==='ekd'||t.source==='ekd-live')&&t.agentId===u.id&&t.date===ekdDate);existing[u.id]=t?t.count:''});setEkdEntries(existing)};
             useEffect(()=>{initEkdEntries()},[ekdDate,termine.length]);
             useEffect(()=>{initVnrEntries()},[vnrDate,termine.length]);
             const saveVNR=async()=>{const rc=appData.rewardsConfig;const nt=termine.filter(t=>!(t.source==='vnr'&&t.date===vnrDate));const pts={...(appData.rewardsPoints||{})};let saved=0,tot=0,aw=0;
                 vnrAgents.forEach(u=>{const count=parseInt(vnrEntries[u.id])||0;if(count<=0)return;
-                    const oldEntry=termine.find(t=>t.source==='vnr'&&t.agentId===u.id&&t.date===vnrDate);const oldCount=oldEntry?oldEntry.count:0;
+                    const oldEntry=termine.find(t=>(t.source==='vnr'||t.source==='vnr-live')&&t.agentId===u.id&&t.date===vnrDate);const oldCount=oldEntry?oldEntry.count:0;
                     nt.push({id:Date.now().toString()+Math.random(),name:u.name,date:vnrDate,count,agentId:u.id,agentName:u.name,source:'vnr',importedAt:new Date().toISOString()});saved++;tot+=count;
                     if(u.hasUser&&rc?.enabled&&pptVNR>0){const diff=count-oldCount;if(diff>0){pts[u.id]=(pts[u.id]||0)+diff*pptVNR;aw+=diff*pptVNR}}});
                 await updateData({...appData,termine:nt,rewardsPoints:pts,termineConfig:{...appData.termineConfig,pointsPerTermin,pptVNR}});
@@ -1670,9 +1689,9 @@ function getOrCreateSheet(){
                     if(u.hasUser&&rc?.enabled&&pointsPerTermin>0){const diff=count-oldCount;if(diff>0){pts[u.id]=(pts[u.id]||0)+diff*pointsPerTermin;aw+=diff*pointsPerTermin}}});
                 await updateData({...appData,termine:nt,rewardsPoints:pts,termineConfig:{...appData.termineConfig,pointsPerTermin,pptVNR}});
                 showNotification(saved+' Agenten, '+tot+' Termine gespeichert'+(aw>0?', +'+aw+' Pkt':''))};
-            const clearTermine=async(src)=>{if(!confirm((src==='vnr'?'VNR':'EKD')+' Termine löschen?'))return;await updateData({...appData,termine:termine.filter(t=>(t.source||'ekd')!==src)});showNotification('Gelöscht')};
+            const clearTermine=async(src)=>{if(!confirm((src==='vnr'?'VNR':'EKD')+' Termine löschen?'))return;await updateData({...appData,termine:termine.filter(t=>{var s=t.source||'ekd';return src==='ekd'?s!=='ekd'&&s!=='ekd-live':src==='vnr'?s!=='vnr'&&s!=='vnr-live':s!==src})});showNotification('Gelöscht')};
             // Stats
-            const getAgentStats=(src)=>{const t=termine.filter(x=>(src==='all'||(x.source||'ekd')===src));const stats={};const normN=(s)=>s?.trim().toLowerCase().replace(/,/g,' ').replace(/[-–—]/g,' ').split(/\s+/).filter(p=>p.length>=2)||[];
+            const getAgentStats=(src)=>{const isSrc=(s,target)=>{var v=s||'ekd';return target==='ekd'?(v==='ekd'||v==='ekd-live'):target==='vnr'?(v==='vnr'||v==='vnr-live'):true};const t=termine.filter(x=>src==='all'||isSrc(x.source,src));const stats={};const normN=(s)=>s?.trim().toLowerCase().replace(/,/g,' ').replace(/[-–—]/g,' ').split(/\s+/).filter(p=>p.length>=2)||[];
                 agents.forEach(u=>{stats[u.id]={name:u.name,count:0,_parts:normN(u.name)}});
                 t.forEach(x=>{
                     // Try agentId first
@@ -1725,7 +1744,7 @@ function getOrCreateSheet(){
                                 <input type="date" value={ekdDate} onChange={e=>setEkdDate(e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs"/>
                             </div>
                             <div style={{maxHeight:240,overflowY:'auto',scrollbarWidth:'thin'}} className="mb-3">
-                            {ekdAgents.length===0?<p className="text-slate-400 text-center py-4 text-sm">Keine EKD Agenten. → Abwesenheit-Tab</p>:ekdAgents.map(u=>{const existing=termine.find(t=>(t.source||'ekd')==='ekd'&&t.agentId===u.id&&t.date===ekdDate);return(
+                            {ekdAgents.length===0?<p className="text-slate-400 text-center py-4 text-sm">Keine EKD Agenten. → Abwesenheit-Tab</p>:ekdAgents.map(u=>{const existing=termine.find(t=>((t.source||'ekd')==='ekd'||t.source==='ekd-live')&&t.agentId===u.id&&t.date===ekdDate);return(
                                 <div key={u.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg mb-1" style={{background:ekdEntries[u.id]>0?'rgba(16,185,129,0.06)':'transparent'}}>
                                     <div className="flex items-center gap-2 flex-1 min-w-0">
                                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">{u.name.charAt(0)}</div>
@@ -1744,8 +1763,8 @@ function getOrCreateSheet(){
                         </div>
                         </div>
                         {/* Stats - compact horizontal below */}
-                        {termine.filter(t=>(t.source||'ekd')==='ekd').length>0&&(<div className="glass-card rounded-2xl p-4 mt-4">
-                            <div className="flex justify-between items-center mb-3"><h3 className="font-bold text-white text-sm">📊 EKD Gesamt ({termine.filter(t=>(t.source||'ekd')==='ekd').reduce((s,t)=>s+(t.count||1),0)} Termine)</h3><button onClick={()=>clearTermine('ekd')} className="px-2 py-0.5 rounded text-xs font-bold" style={{background:'rgba(239,68,68,0.1)',color:'#f87171'}}>🗑️</button></div>
+                        {termine.filter(t=>(t.source||'ekd')==='ekd'||t.source==='ekd-live').length>0&&(<div className="glass-card rounded-2xl p-4 mt-4">
+                            <div className="flex justify-between items-center mb-3"><h3 className="font-bold text-white text-sm">📊 EKD Gesamt ({termine.filter(t=>(t.source||'ekd')==='ekd'||t.source==='ekd-live').reduce((s,t)=>s+(t.count||1),0)} Termine)</h3><button onClick={()=>clearTermine('ekd')} className="px-2 py-0.5 rounded text-xs font-bold" style={{background:'rgba(239,68,68,0.1)',color:'#f87171'}}>🗑️</button></div>
                             <div className="flex flex-wrap gap-2">{getAgentStats('ekd').map(s=>(<div key={s.name} className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.05)'}}><span className="text-white text-sm">{s.name}</span><span className="font-bold text-emerald-400 text-sm">{s.count}</span>{pointsPerTermin>0&&<span className="text-xs text-yellow-400">({s.count*pointsPerTermin}P)</span>}</div>))}</div>
                         </div>)}
                     </>)}
@@ -1757,7 +1776,7 @@ function getOrCreateSheet(){
                                 <input type="date" value={vnrDate} onChange={e=>setVnrDate(e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs"/>
                             </div>
                             <div style={{maxHeight:280,overflowY:'auto',scrollbarWidth:'thin'}} className="mb-3">
-                            {vnrAgents.length===0?<p className="text-slate-400 text-center py-4 text-sm">Keine VNR Agenten. → Abwesenheit-Tab</p>:vnrAgents.map(u=>{const existing=termine.find(t=>t.source==='vnr'&&t.agentId===u.id&&t.date===vnrDate);return(
+                            {vnrAgents.length===0?<p className="text-slate-400 text-center py-4 text-sm">Keine VNR Agenten. → Abwesenheit-Tab</p>:vnrAgents.map(u=>{const existing=termine.find(t=>(t.source==='vnr'||t.source==='vnr-live')&&t.agentId===u.id&&t.date===vnrDate);return(
                                 <div key={u.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg mb-1" style={{background:vnrEntries[u.id]>0?'rgba(59,130,246,0.06)':'transparent'}}>
                                     <div className="flex items-center gap-2 flex-1 min-w-0">
                                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">{u.name.charAt(0)}</div>
@@ -1772,11 +1791,11 @@ function getOrCreateSheet(){
                             <div className="flex gap-2">
                                 <button onClick={saveVNR} className="px-4 py-1.5 rounded-lg font-bold text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#2563eb)',color:'white'}}>💾 Speichern</button>
                                 <button onClick={()=>{const empty={};vnrAgents.forEach(u=>{empty[u.id]=''});setVnrEntries(empty)}} className="px-3 py-1.5 rounded-lg border border-slate-600 text-slate-400 text-xs">Reset</button>
-                                {termine.filter(t=>t.source==='vnr').length>0&&<button onClick={()=>clearTermine('vnr')} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{background:'rgba(239,68,68,0.1)',color:'#f87171'}}>🗑️ Alle löschen</button>}
+                                {termine.filter(t=>t.source==='vnr'||t.source==='vnr-live').length>0&&<button onClick={()=>clearTermine('vnr')} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{background:'rgba(239,68,68,0.1)',color:'#f87171'}}>🗑️ Alle löschen</button>}
                             </div>
                         </div>
-                        {termine.filter(t=>t.source==='vnr').length>0&&(<div className="glass-card rounded-2xl p-4 mt-4">
-                            <h3 className="font-bold text-white text-sm mb-3">📊 VNR Gesamt ({termine.filter(t=>t.source==='vnr').reduce((s,t)=>s+(t.count||1),0)} Termine)</h3>
+                        {termine.filter(t=>t.source==='vnr'||t.source==='vnr-live').length>0&&(<div className="glass-card rounded-2xl p-4 mt-4">
+                            <h3 className="font-bold text-white text-sm mb-3">📊 VNR Gesamt ({termine.filter(t=>t.source==='vnr'||t.source==='vnr-live').reduce((s,t)=>s+(t.count||1),0)} Termine)</h3>
                             <div className="flex flex-wrap gap-2">{getAgentStats('vnr').map(s=>(<div key={s.name} className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.05)'}}><span className="text-white text-sm">{s.name}</span><span className="font-bold text-blue-400 text-sm">{s.count}</span>{pptVNR>0&&<span className="text-xs text-yellow-400">({s.count*pptVNR}P)</span>}</div>))}</div>
                         </div>)}
                     </>)}
@@ -1805,7 +1824,7 @@ function getOrCreateSheet(){
                                     </div>
                                     {retroModal.project&&retroModal.fromDate&&retroModal.toDate&&(()=>{
                                         const src=retroModal.project;
-                                        const affected=termine.filter(t=>(t.source||'ekd')===src&&t.date>=retroModal.fromDate&&t.date<=retroModal.toDate);
+                                        const affected=termine.filter(t=>{var s=t.source||'ekd';return(src==='ekd'?(s==='ekd'||s==='ekd-live'):s===src)&&t.date>=retroModal.fromDate&&t.date<=retroModal.toDate});
                                         const oldPpt=src==='vnr'?pptVNR:pointsPerTermin;
                                         const totalTermine=affected.reduce((s,t)=>s+(t.count||1),0);
                                         const diff=retroModal.newPts-oldPpt;
@@ -1823,7 +1842,7 @@ function getOrCreateSheet(){
                                         if(!retroModal.project||!retroModal.fromDate||!retroModal.toDate){showNotification('Bitte alle Felder ausfuellen','error');return}
                                         const src=retroModal.project;const oldPpt=src==='vnr'?pptVNR:pointsPerTermin;const diff=retroModal.newPts-oldPpt;
                                         if(diff===0){showNotification('Kein Unterschied','error');return}
-                                        const affected=termine.filter(t=>(t.source||'ekd')===src&&t.date>=retroModal.fromDate&&t.date<=retroModal.toDate);
+                                        const affected=termine.filter(t=>{var s=t.source||'ekd';return(src==='ekd'?(s==='ekd'||s==='ekd-live'):s===src)&&t.date>=retroModal.fromDate&&t.date<=retroModal.toDate});
                                         const pts={...(appData.rewardsPoints||{})};let total=0;
                                         affected.forEach(t=>{if(t.agentId){const add=(t.count||1)*diff;pts[t.agentId]=(pts[t.agentId]||0)+add;total+=add}});
                                         if(src==='vnr'){setPptVNR(retroModal.newPts);updateData({...appData,rewardsPoints:pts,termineConfig:{...appData.termineConfig,pointsPerTermin,pptVNR:retroModal.newPts}})}
@@ -1994,11 +2013,67 @@ function getOrCreateSheet(){
             const previewBg=bgColor||CATS[category]?.color+'20';
             const previewText=textColor||'#ffffff';
             const previewBorder=bgColor||CATS[category]?.color;
+
+            /* Dashboard-Bild Upload */
+            const imgFileRef=useRef(null);
+            const[imgDuration,setImgDuration]=useState(10);
+            const[imgUploading,setImgUploading]=useState(false);
+            const[imgPending,setImgPending]=useState(null);
+            useEffect(()=>{
+                const check=async()=>{try{const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImage&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});if(r.ok){const d=await r.json();setImgPending(d[0]?.value||null)}}catch(e){}};
+                check();const iv=setInterval(check,10000);return()=>clearInterval(iv);
+            },[]);
+            const uploadDashImg=async(e)=>{
+                const file=e.target.files[0];if(!file)return;
+                if(!file.type.startsWith('image/')){showNotification('Nur Bilder erlaubt','error');return}
+                if(file.size>5*1024*1024){showNotification('Max 5MB','error');return}
+                setImgUploading(true);
+                const reader=new FileReader();
+                reader.onload=async(ev)=>{
+                    try{
+                        const payload={data:ev.target.result,duration:imgDuration,uploadedAt:new Date().toISOString(),filename:file.name};
+                        await fetch(SUPABASE_URL+'/rest/v1/ccone_data',{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({key:'dashboardImage',value:payload})});
+                        setImgPending(payload);
+                        showNotification('📸 Bild hochgeladen! Wird in ~5s auf dem Dashboard angezeigt.');
+                    }catch(err){showNotification('Upload fehlgeschlagen: '+err.message,'error')}
+                    setImgUploading(false);
+                };
+                reader.readAsDataURL(file);
+            };
+            const deleteDashImg=async()=>{
+                try{await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImage',{method:'DELETE',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});setImgPending(null);showNotification('Bild gelöscht')}catch(e){}
+            };
+
             return(
                 <div className="animate-fade-in">
                     <div className="flex justify-between items-center mb-4">
                         <div><h2 className="text-xl font-bold text-white">📰 News</h2><p className="text-slate-400 text-xs">{news.length} Beiträge</p></div>
                         <button onClick={()=>{resetForm();setShowForm(!showForm)}} className="btn-primary text-white px-4 py-1.5 rounded-lg flex items-center gap-2 text-sm"><Icon name="plus" size={16}/>{showForm?'Abbrechen':'Neue News'}</button>
+                    </div>
+
+                    {/* Dashboard-Bild Upload */}
+                    <div className="glass-card rounded-xl p-4 mb-4" style={{border:'1px solid rgba(212,175,55,0.2)'}}>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <span style={{fontSize:24}}>📸</span>
+                                <div><div className="text-white font-bold text-sm">Dashboard-Bild</div><div className="text-xs text-slate-400">Bild auf dem TV-Dashboard einblenden</div></div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <select value={imgDuration} onChange={e=>setImgDuration(+e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs">
+                                    <option value={5}>5 Sek</option><option value={10}>10 Sek</option><option value={15}>15 Sek</option><option value={20}>20 Sek</option><option value={30}>30 Sek</option><option value={60}>60 Sek</option>
+                                </select>
+                                <input ref={imgFileRef} type="file" accept="image/*" onChange={uploadDashImg} className="hidden"/>
+                                <button onClick={()=>imgFileRef.current?.click()} disabled={imgUploading} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#000'}}>{imgUploading?'⏳...':'📤 Bild senden'}</button>
+                                {imgPending&&<button onClick={deleteDashImg} className="px-2 py-1.5 rounded-lg text-xs font-bold" style={{background:'rgba(239,68,68,0.15)',color:'#f87171'}}>🗑️</button>}
+                            </div>
+                        </div>
+                        {imgPending&&<div className="mt-2 flex items-center gap-3 p-2 rounded-lg" style={{background:'rgba(212,175,55,0.1)',border:'1px solid rgba(212,175,55,0.2)'}}>
+                            <img src={imgPending.data} className="h-12 rounded" style={{maxWidth:80,objectFit:'cover'}}/>
+                            <div className="text-xs text-slate-300">
+                                <div className="font-bold">{imgPending.filename||'Bild'} · {imgPending.duration}s</div>
+                                <div className="text-slate-500">{new Date(imgPending.uploadedAt).toLocaleTimeString('de-DE')}</div>
+                            </div>
+                        </div>}
                     </div>
                     {showForm&&(<div className="glass-card rounded-xl p-5 mb-4 animate-fade-in" style={{border:'2px solid #d4af37'}}>
                         <h3 className="font-bold text-white mb-3 text-sm">{editId?'✏️ News bearbeiten':'📝 Neue News'}</h3>
@@ -13352,7 +13427,7 @@ Regeln:
                         const getProjectUsers=(pid)=>{if(!pid)return allUsers;const names=absAgents.filter(a=>a.projectId===pid).map(a=>a.name.toLowerCase().replace(/,/g,'').replace(/\s+/g,' ').trim());return allUsers.filter(u=>{const up=u.name.toLowerCase().split(' ');return names.some(n=>{const np=n.split(' ');return up.every(p=>np.some(x=>x.includes(p)||p.includes(x)))||np.every(p=>up.some(x=>x.includes(p)||p.includes(x)))})})};
                         const filterSrc=rankingFilter==='ekd'?'ekd':rankingFilter==='vnr'?'vnr':null;
                         const filterUsers=rankingFilter==='ekd'?getProjectUsers(ekdPid):rankingFilter==='vnr'?getProjectUsers(vnrPid):allUsers;
-                        const filteredTermine=filterSrc?allTermine.filter(t=>(t.source||'ekd')===filterSrc):allTermine;
+                        const filteredTermine=filterSrc?allTermine.filter(t=>{var s=t.source||'ekd';return filterSrc==='ekd'?(s==='ekd'||s==='ekd-live'):filterSrc==='vnr'?(s==='vnr'||s==='vnr-live'):s===filterSrc}):allTermine;
                         const normN=(s)=>s?.trim().toLowerCase().replace(/,/g,' ').replace(/[-–—]/g,' ').split(/\s+/).filter(p=>p.length>=2)||[];
                         const fuzzyMatch=(aParts,bParts)=>{if(aParts.length<2||bParts.length<2)return false;const mc1=aParts.filter(p=>bParts.some(bp=>bp.includes(p)||p.includes(bp))).length;const mc2=bParts.filter(p=>aParts.some(ap=>ap.includes(p)||p.includes(ap))).length;return mc1>=(aParts.length>=3?aParts.length-1:aParts.length)||mc2>=(bParts.length>=3?bParts.length-1:bParts.length)};
                         const ranking=filterUsers.map(u=>{const uP=normN(u.name);const mt=filteredTermine.filter(t=>{
@@ -13487,6 +13562,128 @@ Regeln:
                 }
                 return()=>polls.forEach(p=>clearInterval(p));
             },[mode]);
+
+            /* Auto-Sync: EKD Termine aus Dashboard in Portal übertragen */
+            const lastSyncRef=useRef('');
+            const[syncInfo,setSyncInfo]=useState(null);
+            const doEkdSync=()=>{
+                if(!ekdData?.agents?.length)return;
+                var today=new Date().toISOString().slice(0,10);
+                var normN=(s)=>(s||'').replace(/\s*[\(\[]\s*(ekd|vnr|schulung|test)\s*[\)\]]\s*/gi,'').replace(/\.{2,}/g,'').replace(/\u2026/g,'').trim().toLowerCase().replace(/,/g,' ').replace(/[-–—\.]/g,' ').split(/\s+/).filter(p=>p.length>=2);
+                var users=appData?.users||[];
+                var rc=appData?.rewardsConfig;
+                var ppt=appData?.termineConfig?.pointsPerTermin||10;
+                var termine=appData?.termine||[];
+                var pts={...(appData?.rewardsPoints||{})};
+                var nt=[...termine];
+                var synced=0,totalT=0,totalP=0,skipped=0;
+                console.log('EKD-Sync: Start,',ekdData.agents.length,'Agents, ppt='+ppt+', users='+users.length+', heute='+today);
+                ekdData.agents.forEach(function(ag){
+                    var tCount=ag.termin||0;
+                    if(tCount<=0)return;
+                    var nA=normN(ag.name);if(nA.length<1)return;
+                    var matched=null;
+                    users.forEach(function(u){
+                        if(matched||!u.name)return;
+                        var nU=normN(u.name);if(nU.length<1)return;
+                        var mc=0;nA.forEach(function(p){if(nU.some(function(x){return x.includes(p)||p.includes(x)}))mc++});
+                        if(mc>=Math.min(2,nA.length))matched=u;
+                    });
+                    if(!matched){skipped++;console.log('EKD-Sync: ⚠ Nicht zugeordnet:',ag.name);return}
+                    var existIdx=nt.findIndex(function(t){return t.source==='ekd-live'&&t.agentId===matched.id&&t.date===today});
+                    var oldCount=existIdx>=0?nt[existIdx].count:0;
+                    if(tCount<=oldCount){console.log('EKD-Sync: ↔',ag.name,'→',matched.name,':',tCount,'(keine Änderung)');return}
+                    var diff=tCount-oldCount;
+                    console.log('EKD-Sync: ✅',ag.name,'→',matched.name,': +'+diff+' Termine (alt:'+oldCount+' neu:'+tCount+')');
+                    if(existIdx>=0){nt[existIdx]={...nt[existIdx],count:tCount,importedAt:new Date().toISOString()}}
+                    else{nt.push({id:Date.now().toString()+Math.random(),name:matched.name,date:today,count:tCount,agentId:matched.id,agentName:matched.name,source:'ekd-live',importedAt:new Date().toISOString()})}
+                    if(rc?.enabled&&ppt>0){pts[matched.id]=(pts[matched.id]||0)+diff*ppt;totalP+=diff*ppt}
+                    synced++;totalT+=diff;
+                });
+                if(synced>0){
+                    updateData({...appData,termine:nt,rewardsPoints:pts});
+                    setSyncInfo({time:new Date(),agents:synced,termine:totalT,punkte:totalP,skipped,src:'EKD'});
+                    showNotification('✅ EKD: '+synced+' Agents: +'+totalT+' Termine'+(totalP>0?', +'+totalP+' Punkte':''));
+                }else{
+                    setSyncInfo({time:new Date(),agents:0,termine:0,punkte:0,skipped,note:'keine neuen',src:'EKD'});
+                    showNotification('ℹ️ EKD: Keine neuen Termine'+(skipped>0?' ('+skipped+' nicht zugeordnet)':''),'info');
+                }
+            };
+
+            /* Dashboard-Bild Overlay */
+            const[dashImg,setDashImg]=useState(null);
+            const[dashImgPhase,setDashImgPhase]=useState('');
+            const dashImgTimerRef=useRef(null);
+            const dashImgShownRef=useRef('');
+            const ANIMS_IN=['fadeIn','slideInLeft','slideInRight','slideInUp','slideInDown','zoomIn','bounceIn','rotateIn','flipInX','flipInY'];
+            const ANIMS_OUT=['fadeOut','slideOutLeft','slideOutRight','slideOutUp','slideOutDown','zoomOut','bounceOut','rotateOut','flipOutX','flipOutY'];
+            const pickAnim=(arr)=>arr[Math.floor(Math.random()*arr.length)];
+            useEffect(()=>{
+                if(!mode)return;
+                const poll=async()=>{try{
+                    const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImage&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                    if(!r.ok)return;const d=await r.json();
+                    if(d[0]?.value?.data&&!dashImg){
+                        var imgId=d[0].value.uploadedAt||'';
+                        if(dashImgShownRef.current===imgId)return;
+                        dashImgShownRef.current=imgId;
+                        const img=d[0].value;setDashImg(img);setDashImgPhase(pickAnim(ANIMS_IN));
+                        dashImgTimerRef.current=setTimeout(()=>{
+                            setDashImgPhase(pickAnim(ANIMS_OUT));
+                            setTimeout(async()=>{
+                                setDashImg(null);setDashImgPhase('');
+                                try{await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImage',{method:'DELETE',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}})}catch(e){}
+                            },1500);
+                        },(img.duration||10)*1000);
+                    }
+                }catch(e){}};
+                poll();const iv=setInterval(poll,5000);
+                return()=>{clearInterval(iv);if(dashImgTimerRef.current)clearTimeout(dashImgTimerRef.current)};
+            },[mode,dashImg]);
+
+            const doVnrSync=()=>{
+                if(!vnrData?.agents?.length)return;
+                var today=new Date().toISOString().slice(0,10);
+                var normN=(s)=>(s||'').replace(/\s*[\(\[]\s*(ekd|vnr|schulung|test)\s*[\)\]]\s*/gi,'').replace(/\.{2,}/g,'').replace(/\u2026/g,'').trim().toLowerCase().replace(/,/g,' ').replace(/[-–—\.]/g,' ').split(/\s+/).filter(p=>p.length>=2);
+                var users=appData?.users||[];
+                var rc=appData?.rewardsConfig;
+                var ppt=appData?.termineConfig?.pptVNR||10;
+                var termine=appData?.termine||[];
+                var pts={...(appData?.rewardsPoints||{})};
+                var nt=[...termine];
+                var synced=0,totalT=0,totalP=0,skipped=0;
+                console.log('VNR-Sync: Start,',vnrData.agents.length,'Agents, ppt='+ppt+', users='+users.length+', heute='+today);
+                vnrData.agents.forEach(function(ag){
+                    var tCount=ag.erfolge||0;
+                    if(tCount<=0)return;
+                    var nA=normN(ag.name);if(nA.length<1)return;
+                    var matched=null;
+                    users.forEach(function(u){
+                        if(matched||!u.name)return;
+                        var nU=normN(u.name);if(nU.length<1)return;
+                        var mc=0;nA.forEach(function(p){if(nU.some(function(x){return x.includes(p)||p.includes(x)}))mc++});
+                        if(mc>=Math.min(2,nA.length))matched=u;
+                    });
+                    if(!matched){skipped++;console.log('VNR-Sync: ⚠ Nicht zugeordnet:',ag.name);return}
+                    var existIdx=nt.findIndex(function(t){return t.source==='vnr-live'&&t.agentId===matched.id&&t.date===today});
+                    var oldCount=existIdx>=0?nt[existIdx].count:0;
+                    if(tCount<=oldCount){console.log('VNR-Sync: ↔',ag.name,'→',matched.name,':',tCount,'(keine Änderung)');return}
+                    var diff=tCount-oldCount;
+                    console.log('VNR-Sync: ✅',ag.name,'→',matched.name,': +'+diff+' Erfolge (alt:'+oldCount+' neu:'+tCount+')');
+                    if(existIdx>=0){nt[existIdx]={...nt[existIdx],count:tCount,importedAt:new Date().toISOString()}}
+                    else{nt.push({id:Date.now().toString()+Math.random(),name:matched.name,date:today,count:tCount,agentId:matched.id,agentName:matched.name,source:'vnr-live',importedAt:new Date().toISOString()})}
+                    if(rc?.enabled&&ppt>0){pts[matched.id]=(pts[matched.id]||0)+diff*ppt;totalP+=diff*ppt}
+                    synced++;totalT+=diff;
+                });
+                if(synced>0){
+                    updateData({...appData,termine:nt,rewardsPoints:pts});
+                    setSyncInfo({time:new Date(),agents:synced,termine:totalT,punkte:totalP,skipped,src:'VNR'});
+                    showNotification('✅ VNR: '+synced+' Agents: +'+totalT+' Erfolge'+(totalP>0?', +'+totalP+' Punkte':''));
+                }else{
+                    setSyncInfo({time:new Date(),agents:0,termine:0,punkte:0,skipped,note:'keine neuen',src:'VNR'});
+                    showNotification('ℹ️ VNR: Keine neuen Erfolge'+(skipped>0?' ('+skipped+' nicht zugeordnet)':''),'info');
+                }
+            };
 
             // EKD CSV upload fallback
             const handleCsvUpload=(e)=>{
@@ -13687,6 +13884,9 @@ Regeln:
                     </div>
                     <div className="flex items-center gap-3">
                         {lastUpdate&&<span className="text-base text-slate-400">Update: {lastUpdate.toLocaleTimeString('de-DE')}</span>}
+                        {vnrData?.agents?.length>0&&(mode==='vnr'||mode==='both')&&<button onClick={doVnrSync} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(16,185,129,0.15)',color:'#10b981',border:'1px solid rgba(16,185,129,0.3)'}}>🔄 VNR Erfolge sync</button>}
+                        {ekdData?.agents?.length>0&&(mode==='ekd'||mode==='both')&&<button onClick={doEkdSync} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(59,130,246,0.15)',color:'#3b82f6',border:'1px solid rgba(59,130,246,0.3)'}}>🔄 EKD Termine sync</button>}
+                        {syncInfo&&<span className="text-sm font-bold px-3 py-1 rounded-lg" style={{background:syncInfo.agents>0?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.15)',color:syncInfo.agents>0?'#10b981':'#94a3b8',border:'1px solid '+(syncInfo.agents>0?'rgba(16,185,129,0.2)':'rgba(100,116,139,0.2)')}}>{syncInfo.agents>0?'✅ '+(syncInfo.src||'EKD')+': '+syncInfo.agents+' Ag · +'+syncInfo.termine+'T'+(syncInfo.punkte>0?' · +'+syncInfo.punkte+'P':''):'ℹ️ '+(syncInfo.src||'EKD')+': Aktuell'}{syncInfo.skipped>0?' · '+syncInfo.skipped+'⚠':''}  · {syncInfo.time.toLocaleTimeString('de-DE')}</span>}
                         <div className="flex items-center gap-1 ml-2" style={{background:'rgba(255,255,255,0.06)',borderRadius:8,padding:'2px 4px'}}>
                             <button onClick={()=>adjustZoom(-0.1)} className="w-8 h-8 rounded-lg text-lg font-black text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center">−</button>
                             <span className="text-sm text-slate-400 font-bold min-w-[40px] text-center">{Math.round(zoom*100)}%</span>
@@ -13699,6 +13899,10 @@ Regeln:
                     {mode==='both'&&<div className="w-px flex-shrink-0" style={{background:'rgba(255,255,255,0.1)'}}/>}
                     {(mode==='ekd'||mode==='both')&&<Panel title="EKD" data={filteredEkdData} color="#3b82f6" isLive={true} isEkd={true} onUpload={true} fullWidth={mode==='ekd'} standort={ekdStandort} onStandortChange={setEkdStandort}/>}
                 </div>
+                {/* Dashboard-Bild Overlay */}
+                {dashImg&&<div style={{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.85)',animationName:dashImgPhase,animationDuration:dashImgPhase.includes('Out')?'1.5s':'1s',animationFillMode:'forwards',animationTimingFunction:'cubic-bezier(0.34,1.56,0.64,1)'}}>
+                    <img src={dashImg.data} style={{maxWidth:'90vw',maxHeight:'85vh',borderRadius:16,boxShadow:'0 0 80px rgba(212,175,55,0.4)',animationName:dashImgPhase,animationDuration:dashImgPhase.includes('Out')?'1.5s':'1s',animationFillMode:'forwards',animationTimingFunction:'cubic-bezier(0.34,1.56,0.64,1)'}}/>
+                </div>}
                 {/* News-Leiste unten */}
                 {dashNews.length>0&&(
                 <div className="flex-shrink-0" style={{borderTop:'2px solid rgba(255,255,255,0.1)',background:'rgba(0,0,0,0.6)'}}>
