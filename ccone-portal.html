@@ -201,7 +201,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.9.0';
+        const APP_VERSION = '5.9.1';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -13530,6 +13530,7 @@ Regeln:
                         </div>
                         <div className="flex items-center gap-4 flex-shrink-0 ml-3">
                             <div className="text-center"><div className="font-black text-5xl" style={{color:'#10b981'}}>{a.anrufe||0}</div><div className="text-sm text-slate-500 font-bold">Anrufe</div></div>
+                            <div className="text-center"><div className="font-black text-5xl" style={{color:'#34d399'}}>{a.erfolge||0}</div><div className="text-sm text-slate-500 font-bold">Erfolge</div></div>
                             <div className="text-center"><div className="font-black text-5xl" style={{color:'#10b981'}}>{a.talk||0}<span className="text-2xl">%</span></div><div className="text-sm text-slate-500 font-bold">Gespr.</div></div>
                             <div className="text-center"><div className="font-black text-5xl" style={{color:'#3b82f6'}}>{a.wait||0}<span className="text-2xl">%</span></div><div className="text-sm text-slate-500 font-bold">Warten</div></div>
                             <div className="text-center"><div className="font-black text-5xl" style={{color:'#f59e0b'}}>{a.pause||0}<span className="text-2xl">%</span></div><div className="text-sm text-slate-500 font-bold">Pause</div></div>
@@ -13537,7 +13538,6 @@ Regeln:
                         </div>
                     </div>
                     <div className="flex items-center gap-4 text-base">
-                        <span className="text-emerald-400 font-bold">{a.erfolge||0} Erfolge</span>
                         <span className="text-emerald-300 font-bold">{a.termine||0} WVL</span>
                         <span className="text-slate-400 font-bold">{a.nettos||0} Netto</span>
                         <span className="text-blue-300 font-bold">{a.anrufeH||0} A/h</span>
