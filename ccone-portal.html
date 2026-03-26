@@ -220,7 +220,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.9.4';
+        const APP_VERSION = '5.9.5';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -2014,35 +2014,41 @@ function getOrCreateSheet(){
             const previewText=textColor||'#ffffff';
             const previewBorder=bgColor||CATS[category]?.color;
 
-            /* Dashboard-Bild Upload */
+            /* Dashboard-Bild Queue */
             const imgFileRef=useRef(null);
             const[imgDuration,setImgDuration]=useState(10);
+            const[imgTime,setImgTime]=useState('');
             const[imgUploading,setImgUploading]=useState(false);
-            const[imgPending,setImgPending]=useState(null);
+            const[imgQueue,setImgQueue]=useState([]);
             useEffect(()=>{
-                const check=async()=>{try{const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImage&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});if(r.ok){const d=await r.json();setImgPending(d[0]?.value||null)}}catch(e){}};
+                const check=async()=>{try{const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImageQueue&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});if(r.ok){const d=await r.json();setImgQueue(d[0]?.value||[])}}catch(e){}};
                 check();const iv=setInterval(check,10000);return()=>clearInterval(iv);
             },[]);
+            const saveQueue=async(q)=>{
+                await fetch(SUPABASE_URL+'/rest/v1/ccone_data',{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({key:'dashboardImageQueue',value:q})});
+                setImgQueue(q);
+            };
             const uploadDashImg=async(e)=>{
                 const file=e.target.files[0];if(!file)return;
                 if(!file.type.startsWith('image/')){showNotification('Nur Bilder erlaubt','error');return}
                 if(file.size>5*1024*1024){showNotification('Max 5MB','error');return}
+                if(imgQueue.length>=10){showNotification('Max 10 Bilder in der Queue','error');return}
                 setImgUploading(true);
                 const reader=new FileReader();
                 reader.onload=async(ev)=>{
                     try{
-                        const payload={data:ev.target.result,duration:imgDuration,uploadedAt:new Date().toISOString(),filename:file.name};
-                        await fetch(SUPABASE_URL+'/rest/v1/ccone_data',{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({key:'dashboardImage',value:payload})});
-                        setImgPending(payload);
-                        showNotification('📸 Bild hochgeladen! Wird in ~5s auf dem Dashboard angezeigt.');
+                        const item={id:Date.now().toString(),data:ev.target.result,duration:imgDuration,scheduledTime:imgTime||'',filename:file.name,uploadedAt:new Date().toISOString(),shown:false};
+                        const nq=[...imgQueue,item];
+                        await saveQueue(nq);
+                        showNotification('📸 Bild hinzugefügt!'+(imgTime?' Geplant für '+imgTime:' Wird sofort angezeigt.'));
                     }catch(err){showNotification('Upload fehlgeschlagen: '+err.message,'error')}
-                    setImgUploading(false);
+                    setImgUploading(false);if(imgFileRef.current)imgFileRef.current.value='';
                 };
                 reader.readAsDataURL(file);
             };
-            const deleteDashImg=async()=>{
-                try{await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImage',{method:'DELETE',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});setImgPending(null);showNotification('Bild gelöscht')}catch(e){}
-            };
+            const removeQueueItem=async(id)=>{await saveQueue(imgQueue.filter(i=>i.id!==id));showNotification('Bild entfernt')};
+            const clearQueue=async()=>{if(!confirm('Alle Dashboard-Bilder löschen?'))return;await saveQueue([]);showNotification('Queue geleert')};
+            const fmtDur=(s)=>s>=60?Math.floor(s/60)+'m'+(s%60?s%60+'s':''):s+'s';
 
             return(
                 <div className="animate-fade-in">
@@ -2051,28 +2057,35 @@ function getOrCreateSheet(){
                         <button onClick={()=>{resetForm();setShowForm(!showForm)}} className="btn-primary text-white px-4 py-1.5 rounded-lg flex items-center gap-2 text-sm"><Icon name="plus" size={16}/>{showForm?'Abbrechen':'Neue News'}</button>
                     </div>
 
-                    {/* Dashboard-Bild Upload */}
+                    {/* Dashboard-Bild Queue */}
                     <div className="glass-card rounded-xl p-4 mb-4" style={{border:'1px solid rgba(212,175,55,0.2)'}}>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-3">
                                 <span style={{fontSize:24}}>📸</span>
-                                <div><div className="text-white font-bold text-sm">Dashboard-Bild</div><div className="text-xs text-slate-400">Bild auf dem TV-Dashboard einblenden</div></div>
+                                <div><div className="text-white font-bold text-sm">Dashboard-Bilder</div><div className="text-xs text-slate-400">{imgQueue.length}/10 · Bilder auf dem TV-Dashboard einblenden</div></div>
                             </div>
                             <div className="flex items-center gap-2">
+                                <input type="time" value={imgTime} onChange={e=>setImgTime(e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs" title="Uhrzeit (leer = sofort)"/>
                                 <select value={imgDuration} onChange={e=>setImgDuration(+e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs">
-                                    <option value={5}>5 Sek</option><option value={10}>10 Sek</option><option value={15}>15 Sek</option><option value={20}>20 Sek</option><option value={30}>30 Sek</option><option value={60}>60 Sek</option>
+                                    <option value={5}>5s</option><option value={10}>10s</option><option value={15}>15s</option><option value={20}>20s</option><option value={30}>30s</option><option value={60}>1min</option><option value={120}>2min</option><option value={180}>3min</option><option value={300}>5min</option><option value={600}>10min</option><option value={900}>15min</option>
                                 </select>
                                 <input ref={imgFileRef} type="file" accept="image/*" onChange={uploadDashImg} className="hidden"/>
-                                <button onClick={()=>imgFileRef.current?.click()} disabled={imgUploading} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#000'}}>{imgUploading?'⏳...':'📤 Bild senden'}</button>
-                                {imgPending&&<button onClick={deleteDashImg} className="px-2 py-1.5 rounded-lg text-xs font-bold" style={{background:'rgba(239,68,68,0.15)',color:'#f87171'}}>🗑️</button>}
+                                <button onClick={()=>imgFileRef.current?.click()} disabled={imgUploading||imgQueue.length>=10} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#000',opacity:imgQueue.length>=10?0.5:1}}>{imgUploading?'⏳...':'📤 Bild hinzufügen'}</button>
+                                {imgQueue.length>0&&<button onClick={clearQueue} className="px-2 py-1.5 rounded-lg text-xs font-bold" style={{background:'rgba(239,68,68,0.15)',color:'#f87171'}}>🗑️ Alle</button>}
                             </div>
                         </div>
-                        {imgPending&&<div className="mt-2 flex items-center gap-3 p-2 rounded-lg" style={{background:'rgba(212,175,55,0.1)',border:'1px solid rgba(212,175,55,0.2)'}}>
-                            <img src={imgPending.data} className="h-12 rounded" style={{maxWidth:80,objectFit:'cover'}}/>
-                            <div className="text-xs text-slate-300">
-                                <div className="font-bold">{imgPending.filename||'Bild'} · {imgPending.duration}s</div>
-                                <div className="text-slate-500">{new Date(imgPending.uploadedAt).toLocaleTimeString('de-DE')}</div>
-                            </div>
+                        {imgQueue.length>0&&<div className="space-y-1">
+                            {imgQueue.map((img,i)=>(
+                                <div key={img.id} className="flex items-center gap-3 p-2 rounded-lg" style={{background:img.shown?'rgba(100,116,139,0.1)':'rgba(212,175,55,0.08)',border:'1px solid '+(img.shown?'rgba(100,116,139,0.15)':'rgba(212,175,55,0.15)'),opacity:img.shown?0.5:1}}>
+                                    <span className="text-xs text-slate-500 font-bold w-5">{i+1}</span>
+                                    <img src={img.data} className="h-10 rounded" style={{maxWidth:60,objectFit:'cover'}}/>
+                                    <div className="flex-1 min-w-0 text-xs">
+                                        <div className="text-white font-bold truncate">{img.filename||'Bild'}</div>
+                                        <div className="text-slate-500">{fmtDur(img.duration)}{img.scheduledTime?' · ⏰ '+img.scheduledTime:' · Sofort'}{img.shown?' · ✅ Gezeigt':''}</div>
+                                    </div>
+                                    <button onClick={()=>removeQueueItem(img.id)} className="text-xs px-2 py-1 rounded" style={{color:'#f87171'}}>✕</button>
+                                </div>
+                            ))}
                         </div>}
                     </div>
                     {showForm&&(<div className="glass-card rounded-xl p-5 mb-4 animate-fade-in" style={{border:'2px solid #d4af37'}}>
@@ -13610,36 +13623,53 @@ Regeln:
                 }
             };
 
-            /* Dashboard-Bild Overlay */
+            /* Dashboard-Bild Overlay (Queue) */
             const[dashImg,setDashImg]=useState(null);
             const[dashImgPhase,setDashImgPhase]=useState('');
             const dashImgTimerRef=useRef(null);
-            const dashImgShownRef=useRef('');
+            const dashImgShownRef=useRef({});
+            const dashImgBusyRef=useRef(false);
             const ANIMS_IN=['fadeIn','slideInLeft','slideInRight','slideInUp','slideInDown','zoomIn','bounceIn','rotateIn','flipInX','flipInY'];
             const ANIMS_OUT=['fadeOut','slideOutLeft','slideOutRight','slideOutUp','slideOutDown','zoomOut','bounceOut','rotateOut','flipOutX','flipOutY'];
             const pickAnim=(arr)=>arr[Math.floor(Math.random()*arr.length)];
             useEffect(()=>{
                 if(!mode)return;
-                const poll=async()=>{try{
-                    const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImage&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
-                    if(!r.ok)return;const d=await r.json();
-                    if(d[0]?.value?.data&&!dashImg){
-                        var imgId=d[0].value.uploadedAt||'';
-                        if(dashImgShownRef.current===imgId)return;
-                        dashImgShownRef.current=imgId;
-                        const img=d[0].value;setDashImg(img);setDashImgPhase(pickAnim(ANIMS_IN));
+                const poll=async()=>{
+                    if(dashImgBusyRef.current)return;
+                    try{
+                        const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImageQueue&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                        if(!r.ok)return;const d=await r.json();
+                        var queue=d[0]?.value||[];if(!queue.length)return;
+                        var now=new Date();var hhmm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+                        var next=null;
+                        for(var qi=0;qi<queue.length;qi++){
+                            var item=queue[qi];
+                            if(item.shown||dashImgShownRef.current[item.id])continue;
+                            if(item.scheduledTime){
+                                if(hhmm>=item.scheduledTime&&hhmm<item.scheduledTime.slice(0,3)+String(Math.min(59,parseInt(item.scheduledTime.slice(3))+2)).padStart(2,'0')){next=item;break}
+                            }else{next=item;break}
+                        }
+                        if(!next)return;
+                        dashImgBusyRef.current=true;
+                        dashImgShownRef.current[next.id]=true;
+                        setDashImg(next);setDashImgPhase(pickAnim(ANIMS_IN));
                         dashImgTimerRef.current=setTimeout(()=>{
                             setDashImgPhase(pickAnim(ANIMS_OUT));
                             setTimeout(async()=>{
                                 setDashImg(null);setDashImgPhase('');
-                                try{await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImage',{method:'DELETE',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}})}catch(e){}
+                                dashImgBusyRef.current=false;
+                                try{
+                                    var nq=queue.map(i=>i.id===next.id?{...i,shown:true}:i);
+                                    nq=nq.filter(i=>!i.shown);
+                                    await fetch(SUPABASE_URL+'/rest/v1/ccone_data',{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({key:'dashboardImageQueue',value:nq})});
+                                }catch(e){}
                             },1500);
-                        },(img.duration||10)*1000);
-                    }
-                }catch(e){}};
+                        },(next.duration||10)*1000);
+                    }catch(e){dashImgBusyRef.current=false}
+                };
                 poll();const iv=setInterval(poll,5000);
                 return()=>{clearInterval(iv);if(dashImgTimerRef.current)clearTimeout(dashImgTimerRef.current)};
-            },[mode,dashImg]);
+            },[mode]);
 
             const doVnrSync=()=>{
                 if(!vnrData?.agents?.length)return;
