@@ -201,7 +201,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.9.1';
+        const APP_VERSION = '5.9.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -13530,11 +13530,11 @@ Regeln:
                         </div>
                         <div className="flex items-center gap-4 flex-shrink-0 ml-3">
                             <div className="text-center"><div className="font-black text-5xl" style={{color:'#10b981'}}>{a.anrufe||0}</div><div className="text-sm text-slate-500 font-bold">Anrufe</div></div>
-                            <div className="text-center"><div className="font-black text-5xl" style={{color:'#34d399'}}>{a.erfolge||0}</div><div className="text-sm text-slate-500 font-bold">Erfolge</div></div>
                             <div className="text-center"><div className="font-black text-5xl" style={{color:'#10b981'}}>{a.talk||0}<span className="text-2xl">%</span></div><div className="text-sm text-slate-500 font-bold">Gespr.</div></div>
-                            <div className="text-center"><div className="font-black text-5xl" style={{color:'#3b82f6'}}>{a.wait||0}<span className="text-2xl">%</span></div><div className="text-sm text-slate-500 font-bold">Warten</div></div>
-                            <div className="text-center"><div className="font-black text-5xl" style={{color:'#f59e0b'}}>{a.pause||0}<span className="text-2xl">%</span></div><div className="text-sm text-slate-500 font-bold">Pause</div></div>
-                            <div className="text-center"><div className="font-black text-5xl" style={{color:'#a855f7'}}>{a.dispo||0}<span className="text-2xl">%</span></div><div className="text-sm text-slate-500 font-bold">Nachb.</div></div>
+                            <div className="text-center"><div className="font-black text-5xl" style={{color:'#10b981'}}>{a.wait||0}<span className="text-2xl">%</span></div><div className="text-sm text-slate-500 font-bold">Warten</div></div>
+                            <div className="text-center"><div className="font-black text-5xl" style={{color:'#10b981'}}>{a.pause||0}<span className="text-2xl">%</span></div><div className="text-sm text-slate-500 font-bold">Pause</div></div>
+                            <div className="text-center"><div className="font-black text-5xl" style={{color:'#10b981'}}>{a.dispo||0}<span className="text-2xl">%</span></div><div className="text-sm text-slate-500 font-bold">Nachb.</div></div>
+                            <div className="text-center rounded-xl px-3 py-1" style={{background:'rgba(212,175,55,0.15)',border:'1px solid rgba(212,175,55,0.3)'}}><div className="font-black text-5xl" style={{color:'#d4af37'}}>{a.erfolge||0}</div><div className="text-sm font-bold" style={{color:'#d4af37'}}>Erfolge</div></div>
                         </div>
                     </div>
                     <div className="flex items-center gap-4 text-base">
