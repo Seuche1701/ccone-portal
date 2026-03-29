@@ -265,7 +265,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.2.0';
+        const APP_VERSION = '6.2.1';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14362,7 +14362,22 @@ function TrainingAdmin({ supabase }) {
     const ch = supabase.channel("admin-sessions")
       .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions" }, loadActiveSession)
       .subscribe();
-    return () => supabase.removeChannel(ch);
+    // Permanent answer listener - catches ALL incoming answers regardless of question
+    const answerCh = supabase.channel("admin-quiz-answers-global")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "training_quiz_answers" },
+        payload => {
+          setQuizAnswers(prev => {
+            // Only add if not already there
+            if (prev.find(a => a.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
+          setAllQuizAnswers(prev => {
+            if (prev.find(a => a.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); supabase.removeChannel(answerCh); };
   }, []);
 
   async function loadPresentations() {
@@ -15598,8 +15613,9 @@ function TrainingAdmin({ supabase }) {
         {/* Quiz Active Display */}
         {session?.quiz_active && session?.quiz_question && (()=>{
           const q = session.quiz_question;
-          const totalAgents = (appData?.users||[]).filter(u=>u.role==='agent'||u.role==='user').length || quizAnswers.length;
-          const allAnswered = quizAnswers.length >= Math.max(1, totalAgents);
+          // Show "alle geantwortet" banner when new answers stop coming in (use last answer time)
+          const uniqueAnswerers = [...new Set(quizAnswers.map(a=>a.user_id||a.user_name))].length;
+          const allAnswered = quizAnswers.length > 0;
           return (
             <div style={{background:'rgba(124,58,237,0.15)',borderBottom:'1px solid rgba(124,58,237,0.4)',padding:'10px 16px',flexShrink:0}}>
               <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
@@ -15607,8 +15623,8 @@ function TrainingAdmin({ supabase }) {
                 <div style={{flex:1,color:'#c4b5fd',fontWeight:700,fontSize:13}}>{q.question}</div>
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   {allAnswered
-                    ? <span style={{background:'rgba(34,197,94,0.2)',border:'1px solid rgba(34,197,94,0.4)',borderRadius:6,padding:'2px 10px',color:'#86efac',fontSize:12,fontWeight:700}}>✅ Alle haben geantwortet!</span>
-                    : <span style={{color:'#a78bfa',fontSize:13,fontWeight:700}}>{quizAnswers.length} Antworten</span>
+                    ? <span style={{background:'rgba(34,197,94,0.2)',border:'1px solid rgba(34,197,94,0.4)',borderRadius:6,padding:'2px 10px',color:'#86efac',fontSize:12,fontWeight:700}}>✅ {uniqueAnswerers} Agent{uniqueAnswerers!==1?'en':''} {uniqueAnswerers!==1?'haben':'hat'} geantwortet</span>
+                    : <span style={{color:'#a78bfa',fontSize:13,fontWeight:700}}>Warte auf Antworten…</span>
                   }
                   <button onClick={endQuiz}
                     style={{background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:7,padding:'4px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
@@ -15623,13 +15639,14 @@ function TrainingAdmin({ supabase }) {
                   const isCorrect = i===q.correct_index;
                   const pct = quizAnswers.length ? Math.round(cnt/quizAnswers.length*100) : 0;
                   return (
-                    <div key={i} style={{background:isCorrect?'rgba(34,197,94,0.08)':'rgba(255,255,255,0.03)',border:'1px solid '+(isCorrect?'rgba(34,197,94,0.3)':'#334155'),borderRadius:8,padding:'8px 10px'}}>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
-                        <span style={{color:isCorrect?'#86efac':'#94a3b8',fontWeight:700,fontSize:13}}>{String.fromCharCode(65+i)}</span>
-                        <span style={{color:isCorrect?'#86efac':'#fff',fontWeight:800,fontSize:14}}>{cnt}x</span>
+                    <div key={i} style={{background:isCorrect?'rgba(34,197,94,0.15)':'rgba(255,255,255,0.03)',border:'2px solid '+(isCorrect?'#22c55e':'#334155'),borderRadius:8,padding:'8px 10px',position:'relative'}}>
+                      {isCorrect&&<span style={{position:'absolute',top:-8,right:6,background:'#22c55e',color:'#000',fontSize:9,fontWeight:900,borderRadius:4,padding:'1px 5px'}}>✓ RICHTIG</span>}
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5}}>
+                        <span style={{color:isCorrect?'#86efac':'#94a3b8',fontWeight:800,fontSize:14}}>{String.fromCharCode(65+i)}: {opt.substring(0,18)}{opt.length>18?'…':''}</span>
+                        <span style={{color:isCorrect?'#86efac':'#fff',fontWeight:900,fontSize:16}}>{cnt}x</span>
                       </div>
-                      <div style={{background:'#0f172a',borderRadius:3,height:6,overflow:'hidden',marginBottom:5}}>
-                        <div style={{width:pct+'%',height:'100%',background:isCorrect?'#22c55e':'#7c3aed',transition:'width 0.5s'}}/>
+                      <div style={{background:'#0f172a',borderRadius:3,height:8,overflow:'hidden',marginBottom:5}}>
+                        <div style={{width:pct+'%',height:'100%',background:isCorrect?'#22c55e':'#7c3aed',transition:'width 0.5s',minWidth:pct>0?'4px':'0'}}/>
                       </div>
                       <div style={{fontSize:11,color:'#475569',lineHeight:1.4}}>
                         {answerers.map((a,j)=>(
