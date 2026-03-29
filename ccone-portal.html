@@ -265,7 +265,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.1.9';
+        const APP_VERSION = '6.2.0';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -15596,27 +15596,55 @@ function TrainingAdmin({ supabase }) {
         })()}
 
         {/* Quiz Active Display */}
-        {session?.quiz_active && session?.quiz_question && (
-          <div style={{background:'rgba(124,58,237,0.15)',borderBottom:'1px solid rgba(124,58,237,0.4)',padding:'8px 16px',display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
-            <span style={{fontSize:18}}>❓</span>
-            <div style={{flex:1}}>
-              <div style={{color:'#c4b5fd',fontWeight:700,fontSize:13}}>Auffrischungsrunde aktiv</div>
-              <div style={{color:'#7c3aed',fontSize:11}}>{session.quiz_question.question?.substring(0,60)}…</div>
+        {session?.quiz_active && session?.quiz_question && (()=>{
+          const q = session.quiz_question;
+          const totalAgents = (appData?.users||[]).filter(u=>u.role==='agent'||u.role==='user').length || quizAnswers.length;
+          const allAnswered = quizAnswers.length >= Math.max(1, totalAgents);
+          return (
+            <div style={{background:'rgba(124,58,237,0.15)',borderBottom:'1px solid rgba(124,58,237,0.4)',padding:'10px 16px',flexShrink:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                <span style={{fontSize:18}}>❓</span>
+                <div style={{flex:1,color:'#c4b5fd',fontWeight:700,fontSize:13}}>{q.question}</div>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  {allAnswered
+                    ? <span style={{background:'rgba(34,197,94,0.2)',border:'1px solid rgba(34,197,94,0.4)',borderRadius:6,padding:'2px 10px',color:'#86efac',fontSize:12,fontWeight:700}}>✅ Alle haben geantwortet!</span>
+                    : <span style={{color:'#a78bfa',fontSize:13,fontWeight:700}}>{quizAnswers.length} Antworten</span>
+                  }
+                  <button onClick={endQuiz}
+                    style={{background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:7,padding:'4px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                    ✓ Beenden
+                  </button>
+                </div>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+                {q.options?.map((opt,i)=>{
+                  const answerers = quizAnswers.filter(a=>a.answer_index===i);
+                  const cnt = answerers.length;
+                  const isCorrect = i===q.correct_index;
+                  const pct = quizAnswers.length ? Math.round(cnt/quizAnswers.length*100) : 0;
+                  return (
+                    <div key={i} style={{background:isCorrect?'rgba(34,197,94,0.08)':'rgba(255,255,255,0.03)',border:'1px solid '+(isCorrect?'rgba(34,197,94,0.3)':'#334155'),borderRadius:8,padding:'8px 10px'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
+                        <span style={{color:isCorrect?'#86efac':'#94a3b8',fontWeight:700,fontSize:13}}>{String.fromCharCode(65+i)}</span>
+                        <span style={{color:isCorrect?'#86efac':'#fff',fontWeight:800,fontSize:14}}>{cnt}x</span>
+                      </div>
+                      <div style={{background:'#0f172a',borderRadius:3,height:6,overflow:'hidden',marginBottom:5}}>
+                        <div style={{width:pct+'%',height:'100%',background:isCorrect?'#22c55e':'#7c3aed',transition:'width 0.5s'}}/>
+                      </div>
+                      <div style={{fontSize:11,color:'#475569',lineHeight:1.4}}>
+                        {answerers.map((a,j)=>(
+                          <span key={j} style={{display:'inline-block',background:a.is_correct?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)',border:'1px solid '+(a.is_correct?'rgba(34,197,94,0.3)':'rgba(239,68,68,0.3)'),borderRadius:4,padding:'1px 5px',margin:'1px',color:a.is_correct?'#86efac':'#fca5a5',fontSize:10}}>
+                            {a.user_name||'Agent'}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div style={{color:'#a78bfa',fontSize:13,fontWeight:600}}>{quizAnswers.length} Antworten</div>
-            <div style={{display:'flex',gap:4}}>
-              {session.quiz_question.options?.map((opt,i)=>{
-                const cnt=quizAnswers.filter(a=>a.answer_index===i).length;
-                const isCorrect=i===session.quiz_question.correct_index;
-                return <span key={i} style={{background:isCorrect?'rgba(34,197,94,0.2)':'rgba(255,255,255,0.05)',border:'1px solid '+(isCorrect?'rgba(34,197,94,0.4)':'#334155'),borderRadius:5,padding:'2px 8px',fontSize:11,color:isCorrect?'#86efac':'#94a3b8',fontWeight:600}}>{String.fromCharCode(65+i)}: {cnt}</span>;
-              })}
-            </div>
-            <button onClick={endQuiz}
-              style={{background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:7,padding:'5px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
-              Beenden
-            </button>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Pause-Picker Modal */}
         {pausePicker && (
@@ -15893,15 +15921,15 @@ function TrainingAgent({ supabase }) {
 
     const colors = ['#3b82f6','#8b5cf6','#f97316','#ec4899'];
     return (
-      <div style={{background:'#080d14',minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24}}>
-        <div style={{color:'#7c3aed',fontWeight:700,fontSize:16,marginBottom:4,display:'flex',alignItems:'center',gap:8}}>
-          <span style={{fontSize:28}}>🧠</span> Kleine Auffrischungsrunde
+      <div style={{background:'#080d14',minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 32px'}}>
+        <div style={{color:'#a78bfa',fontWeight:800,fontSize:24,marginBottom:8,display:'flex',alignItems:'center',gap:12}}>
+          <span style={{fontSize:44}}>🧠</span> Auffrischungsrunde
         </div>
-        <div style={{color:'#475569',fontSize:14,marginBottom:28}}>Beantworte die folgende Frage</div>
-        <div style={{background:'#111827',border:'1px solid #1f2937',borderRadius:16,padding:'24px 28px',maxWidth:580,width:'100%',marginBottom:24,boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}}>
-          <div style={{color:'#fff',fontWeight:800,fontSize:20,lineHeight:1.4,textAlign:'center'}}>{q.question}</div>
+        <div style={{color:'#475569',fontSize:18,marginBottom:36}}>Beantworte die folgende Frage</div>
+        <div style={{background:'#111827',border:'2px solid #1f2937',borderRadius:20,padding:'36px 40px',maxWidth:860,width:'100%',marginBottom:32,boxShadow:'0 30px 60px rgba(0,0,0,0.6)'}}>
+          <div style={{color:'#fff',fontWeight:900,fontSize:30,lineHeight:1.5,textAlign:'center'}}>{q.question}</div>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,maxWidth:580,width:'100%'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,maxWidth:860,width:'100%'}}>
           {q.options.map((opt,i)=>{
             const isCorrect = i === q.correct_index;
             const isSelected = answered === i;
@@ -15915,10 +15943,10 @@ function TrainingAgent({ supabase }) {
             }
             return (
               <button key={i} onClick={()=>submitAnswer(i)} disabled={answered!==null}
-                style={{background:bg,border:`2px solid ${border}`,borderRadius:12,padding:'16px 14px',color,fontWeight:700,fontSize:15,
-                  cursor:answered===null?'pointer':'not-allowed',transition:'all 0.2s',textAlign:'left',display:'flex',alignItems:'center',gap:10}}>
-                <span style={{width:32,height:32,borderRadius:'50%',background:answered===null?colors[i]:isCorrect?'#22c55e':isSelected?'#ef4444':'#1e293b',
-                  display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:14,color:'#fff',flexShrink:0,border:'2px solid '+(answered===null?colors[i]:border)}}>
+                style={{background:bg,border:'3px solid '+border,borderRadius:16,padding:'24px 20px',color,fontWeight:700,fontSize:22,
+                  cursor:answered===null?'pointer':'not-allowed',transition:'all 0.2s',textAlign:'left',display:'flex',alignItems:'center',gap:16}}>
+                <span style={{width:52,height:52,borderRadius:'50%',background:answered===null?colors[i]:isCorrect?'#22c55e':isSelected?'#ef4444':'#1e293b',
+                  display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:22,color:'#fff',flexShrink:0,border:'3px solid '+(answered===null?colors[i]:border)}}>
                   {String.fromCharCode(65+i)}
                 </span>
                 {opt}
@@ -15927,11 +15955,11 @@ function TrainingAgent({ supabase }) {
           })}
         </div>
         {answered !== null && (
-          <div style={{marginTop:20,color:answered===q.correct_index?'#86efac':'#fca5a5',fontSize:16,fontWeight:700,
+          <div style={{marginTop:28,color:answered===q.correct_index?'#86efac':'#fca5a5',fontSize:22,fontWeight:800,
             background:answered===q.correct_index?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)',
-            border:'1px solid '+(answered===q.correct_index?'rgba(34,197,94,0.3)':'rgba(239,68,68,0.3)'),
-            borderRadius:10,padding:'10px 20px'}}>
-            {answered===q.correct_index?'✅ Richtig! Gut gemacht.':'❌ Leider falsch. Die richtige Antwort war '+String.fromCharCode(65+q.correct_index)+'.'}
+            border:'2px solid '+(answered===q.correct_index?'rgba(34,197,94,0.3)':'rgba(239,68,68,0.3)'),
+            borderRadius:14,padding:'16px 32px'}}>
+            {answered===q.correct_index?'✅ Richtig! Gut gemacht.':'❌ Falsch. Richtig war: '+String.fromCharCode(65+q.correct_index)+'.'}
           </div>
         )}
       </div>
