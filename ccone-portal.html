@@ -19,6 +19,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -210,6 +211,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -220,13 +222,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.0.4';
+        const APP_VERSION = '6.0.5';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14554,17 +14557,15 @@ function TrainingAgent({ supabase }) {
         <div className="text-5xl mb-4">📺</div>
         <div className="text-base font-medium text-slate-400">Keine aktive Schulung</div>
         <div className="text-sm mt-1" style={{color:'#64748b',textAlign:'center',maxWidth:280}}>Sobald der Trainer eine Schulung startet, erscheint die Präsentation hier automatisch.</div>
-        <div className="flex items-center gap-2 mt-5 text-xs" style={{color:'#334155'}}>
-          <span style={{width:8,height:8,borderRadius:'50%',background:'#334155',display:'inline-block',animation:'pulse 2s infinite'}}></span>
-          Warte auf Schulung…
-        </div>
-        <div className="flex items-center gap-2 mt-4 text-xs text-slate-600">
+        <div className="flex items-center gap-2 mt-5 text-xs" style={{color:'#475569'}}>
           <span className="w-2 h-2 rounded-full bg-slate-600 animate-pulse inline-block"></span>
-          Warte auf Verbindung…
+          Warte auf Schulung…
         </div>
       </div>
     );
   }
+
+  const slideTitle = `Folie ${currentSlide}`;
 
   return (
     <div className="flex flex-col items-center p-4" style={{background:'#0a0f1a',minHeight:'100vh'}}>
@@ -14645,12 +14646,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -14736,6 +14739,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
