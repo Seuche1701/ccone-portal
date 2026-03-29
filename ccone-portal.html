@@ -18,6 +18,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -208,6 +209,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -217,13 +219,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.0.0';
+        const APP_VERSION = '6.0.1';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14058,29 +14061,26 @@ function slideUrl(supabase, presId, index) {
 
 // Electron-safe image component: fetches via supabase client → blob URL
 function SlideImage({ supabase, presId, index, style, className, alt }) {
-  const [src, setSrc] = React.useState(null);
+  const pad = String(index).padStart(2, "0");
+  const { data } = supabase.storage.from("training-slides").getPublicUrl(`${presId}/slide-${pad}.jpg`);
+  const [loaded, setLoaded] = React.useState(false);
   const [error, setError] = React.useState(false);
-  React.useEffect(() => {
-    let revoked = false;
-    setError(false);
-    setSrc(null);
-    const pad = String(index).padStart(2, "0");
-    const path = `${presId}/slide-${pad}.jpg`;
-    supabase.storage.from("training-slides").download(path)
-      .then(({ data, error }) => {
-        if (error || !data) { setError(true); return; }
-        const url = URL.createObjectURL(data);
-        if (!revoked) setSrc(url);
-      })
-      .catch(() => setError(true));
-    return () => {
-      revoked = true;
-      if (src) URL.revokeObjectURL(src);
-    };
-  }, [presId, index]);
+  // Cache-bust nur beim ersten Laden verhindern, danach normal
+  const url = data.publicUrl;
   if (error) return <div style={{...style, background:'#1e293b', display:'flex', alignItems:'center', justifyContent:'center', color:'#64748b', fontSize:11}}>Folie {index}</div>;
-  if (!src) return <div style={{...style, background:'#0f172a', display:'flex', alignItems:'center', justifyContent:'center'}}><div style={{width:20,height:20,border:'2px solid #f97316',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/></div>;
-  return <img src={src} alt={alt||`Folie ${index}`} style={style} className={className}/>;
+  return (
+    <div style={{...style, position:'relative', background:'#0f172a'}}>
+      {!loaded && <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{width:20,height:20,border:'2px solid #f97316',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/></div>}
+      <img
+        src={url}
+        alt={alt||`Folie ${index}`}
+        style={{...style, opacity: loaded ? 1 : 0, transition:'opacity 0.2s'}}
+        className={className}
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+      />
+    </div>
+  );
 }
 
 function UploadView({ supabase, onDone }) {
@@ -14260,6 +14260,7 @@ function TrainingAdmin({ supabase }) {
   const [selectedPres, setSelectedPres] = React.useState(null);
   const [currentSlide, setCurrentSlide] = React.useState(1);
   const [deleting, setDeleting] = React.useState(null);
+  const [confirmDelete, setConfirmDelete] = React.useState(null);
   const sessionRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -14319,12 +14320,18 @@ function TrainingAdmin({ supabase }) {
 
   async function deletePresentation(pres) {
     setDeleting(pres.id);
-    const paths = Array.from({ length: pres.slide_count }, (_, i) => {
-      const pad = String(i + 1).padStart(2, "0");
-      return `${pres.id}/slide-${pad}.jpg`;
-    });
-    await supabase.storage.from("training-slides").remove(paths);
-    await supabase.from("training_presentations").delete().eq("id", pres.id);
+    try {
+      const paths = Array.from({ length: pres.slide_count }, (_, i) => {
+        const pad = String(i + 1).padStart(2, "0");
+        return `${pres.id}/slide-${pad}.jpg`;
+      });
+      const { error: storageErr } = await supabase.storage.from("training-slides").remove(paths);
+      if (storageErr) console.warn("Storage remove:", storageErr.message);
+      const { error: dbErr } = await supabase.from("training_presentations").delete().eq("id", pres.id);
+      if (dbErr) { alert("Löschen fehlgeschlagen: " + dbErr.message); setDeleting(null); return; }
+    } catch(e) {
+      alert("Fehler: " + e.message);
+    }
     setDeleting(null);
     loadPresentations();
   }
@@ -14372,13 +14379,27 @@ function TrainingAdmin({ supabase }) {
                   >
                     ▶ Starten
                   </button>
-                  <button
-                    onClick={() => deletePresentation(pres)}
-                    disabled={deleting === pres.id}
-                    className="bg-slate-700 hover:bg-red-900 text-slate-400 hover:text-red-300 text-sm px-3 py-2 rounded-lg transition-colors"
-                  >
-                    {deleting === pres.id ? "…" : "🗑"}
-                  </button>
+                  {confirmDelete === pres.id ? (
+                    <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                      <span style={{color:'#94a3b8',fontSize:11}}>Löschen?</span>
+                      <button
+                        onClick={() => { setConfirmDelete(null); deletePresentation(pres); }}
+                        style={{background:'rgba(239,68,68,0.2)',color:'#f87171',border:'1px solid rgba(239,68,68,0.4)',borderRadius:6,padding:'4px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}
+                      >Ja</button>
+                      <button
+                        onClick={() => setConfirmDelete(null)}
+                        style={{background:'rgba(255,255,255,0.05)',color:'#94a3b8',border:'1px solid rgba(255,255,255,0.1)',borderRadius:6,padding:'4px 10px',fontSize:12,cursor:'pointer'}}
+                      >Nein</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDelete(pres.id)}
+                      disabled={deleting === pres.id}
+                      className="bg-slate-700 hover:bg-red-900 text-slate-400 hover:text-red-300 text-sm px-3 py-2 rounded-lg transition-colors"
+                    >
+                      {deleting === pres.id ? "…" : "🗑"}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -14609,12 +14630,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -14699,6 +14722,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
