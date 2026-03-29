@@ -25,6 +25,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -222,6 +223,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -238,13 +240,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.1.0';
+        const APP_VERSION = '6.1.1';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14292,10 +14295,18 @@ function TrainingAdmin({ supabase }) {
   const [pauseMins, setPauseMins] = React.useState(30);
   const [isPaused, setIsPaused] = React.useState(false);
   const [adminPauseSecs, setAdminPauseSecs] = React.useState(0);
+  const [playlists, setPlaylists] = React.useState([]);
+  const [playlistView, setPlaylistView] = React.useState(false); // true = playlist editor open
+  const [editingPlaylist, setEditingPlaylist] = React.useState(null); // null | playlist obj
+  const [playlistTitle, setPlaylistTitle] = React.useState('');
+  const [playlistItems, setPlaylistItems] = React.useState([]); // [{presId, title, slide_count}]
+  const [playlistIndex, setPlaylistIndex] = React.useState(0);
+  const [listTab, setListTab] = React.useState('einzeln');
   const sessionRef = React.useRef(null);
 
   React.useEffect(() => {
     loadPresentations();
+    loadPlaylists();
     loadActiveSession();
     const ch = supabase.channel("admin-sessions")
       .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions" }, loadActiveSession)
@@ -14308,6 +14319,57 @@ function TrainingAdmin({ supabase }) {
     if (data) setPresentations(data);
   }
 
+  async function loadPlaylists() {
+    const { data } = await supabase.from("training_playlists").select("*").order("created_at", { ascending: false });
+    if (data) setPlaylists(data);
+  }
+
+  async function savePlaylist() {
+    if (!playlistTitle.trim() || playlistItems.length < 2) return;
+    const id = playlistTitle.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') + '-' + Date.now();
+    const payload = { title: playlistTitle.trim(), presentations: playlistItems };
+    if (editingPlaylist) {
+      await supabase.from("training_playlists").update(payload).eq("id", editingPlaylist.id);
+    } else {
+      await supabase.from("training_playlists").insert({ id, ...payload });
+    }
+    setPlaylistView(false); setEditingPlaylist(null); setPlaylistTitle(''); setPlaylistItems([]);
+    loadPlaylists();
+  }
+
+  async function deletePlaylist(pl) {
+    await supabase.from("training_playlists").delete().eq("id", pl.id);
+    loadPlaylists();
+  }
+
+  async function startPlaylist(pl, startTime) {
+    await supabase.from("training_sessions").update({ active: false }).eq("active", true);
+    const firstPres = presentations.find(p => p.id === pl.presentations[0]?.presId);
+    if (!firstPres) return;
+    const insertData = { presentation: firstPres.id, slide_index: 1, active: true, playlist_id: pl.id, playlist_index: 0 };
+    if (startTime) insertData.start_time = startTime;
+    const { data } = await supabase.from("training_sessions").insert(insertData).select().single();
+    setSession(data); setSelectedPres(firstPres); setCurrentSlide(1);
+    setPlaylistIndex(0); sessionRef.current = data.id;
+    setStartTimePicker(null); setStartTimeVal('');
+    setView("present");
+  }
+
+  async function nextPlaylistPres() {
+    if (!session?.playlist_id || !session?.playlist_index === undefined) return;
+    const pl = playlists.find(p => p.id === session.playlist_id);
+    if (!pl) return;
+    const nextIdx = (session.playlist_index || 0) + 1;
+    if (nextIdx >= pl.presentations.length) { stopSession(); return; }
+    const nextPres = presentations.find(p => p.id === pl.presentations[nextIdx]?.presId);
+    if (!nextPres) return;
+    await supabase.from("training_sessions").update({
+      presentation: nextPres.id, slide_index: 1, playlist_index: nextIdx, updated_at: new Date().toISOString()
+    }).eq("id", sessionRef.current);
+    setSelectedPres(nextPres); setCurrentSlide(1); setPlaylistIndex(nextIdx);
+    setSession(prev => ({...prev, presentation: nextPres.id, slide_index: 1, playlist_index: nextIdx}));
+  }
+
   async function loadActiveSession() {
     const { data } = await supabase.from("training_sessions").select("*").eq("active", true)
       .order("started_at", { ascending: false }).limit(1).maybeSingle();
@@ -14316,6 +14378,11 @@ function TrainingAdmin({ supabase }) {
       setCurrentSlide(data.slide_index);
       sessionRef.current = data.id;
       setIsPaused(!!data.pause_type);
+      if (data.playlist_index !== null) setPlaylistIndex(data.playlist_index || 0);
+      if (data.playlist_id) {
+        const pl = playlists.find(p => p.id === data.playlist_id);
+        if (!pl) { const {data:plData} = await supabase.from("training_playlists").select("*").eq("id",data.playlist_id).maybeSingle(); if(plData) setPlaylists(prev=>[...prev.filter(p=>p.id!==plData.id),plData]); }
+      }
       if (data.start_time) {
         const secs = Math.ceil((new Date(data.start_time).getTime() - Date.now()) / 1000);
         setAdminCountdown(secs > 0 ? secs : null);
@@ -14414,19 +14481,118 @@ function TrainingAdmin({ supabase }) {
   }
 
   if (view === "list") {
+    // Playlist Editor
+    if (playlistView) {
+      const addToPlaylist = (pres) => {
+        if (!playlistItems.find(i=>i.presId===pres.id))
+          setPlaylistItems(prev=>[...prev,{presId:pres.id,title:pres.title,slide_count:pres.slide_count}]);
+      };
+      const moveItem = (idx, dir) => {
+        const arr=[...playlistItems]; const ni=idx+dir;
+        if(ni<0||ni>=arr.length) return;
+        [arr[idx],arr[ni]]=[arr[ni],arr[idx]]; setPlaylistItems(arr);
+      };
+      return (
+        <div style={{background:'#0a0f1a',minHeight:'100vh',padding:20}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
+            <button onClick={()=>{setPlaylistView(false);setEditingPlaylist(null);setPlaylistTitle('');setPlaylistItems([]);}}
+              style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
+            <span style={{color:'#334155'}}>|</span>
+            <span style={{color:'#fff',fontWeight:700,fontSize:15}}>{editingPlaylist?'Playlist bearbeiten':'Neue Playlist'}</span>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,maxWidth:900}}>
+            {/* Left: available presentations */}
+            <div>
+              <div style={{color:'#94a3b8',fontSize:12,fontWeight:600,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Verfügbare Schulungen</div>
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {presentations.map(pres=>(
+                  <div key={pres.id} style={{background:'#1e293b',border:'1px solid #334155',borderRadius:10,padding:'10px 12px',display:'flex',alignItems:'center',gap:10}}>
+                    <SlideImage supabase={supabase} presId={pres.id} index={1} style={{width:60,height:34,objectFit:'cover',borderRadius:6,flexShrink:0,background:'#0f172a'}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{color:'#fff',fontWeight:600,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{pres.title}</div>
+                      <div style={{color:'#64748b',fontSize:11}}>{pres.slide_count} Folien</div>
+                    </div>
+                    <button onClick={()=>addToPlaylist(pres)}
+                      disabled={!!playlistItems.find(i=>i.presId===pres.id)}
+                      style={{background:playlistItems.find(i=>i.presId===pres.id)?'rgba(34,197,94,0.15)':'rgba(249,115,22,0.15)',
+                        color:playlistItems.find(i=>i.presId===pres.id)?'#86efac':'#f97316',
+                        border:'1px solid '+(playlistItems.find(i=>i.presId===pres.id)?'rgba(34,197,94,0.3)':'rgba(249,115,22,0.3)'),
+                        borderRadius:6,padding:'4px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                      {playlistItems.find(i=>i.presId===pres.id)?'✓ Hinzugefügt':'+ Hinzufügen'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Right: playlist order */}
+            <div>
+              <div style={{color:'#94a3b8',fontSize:12,fontWeight:600,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Reihenfolge</div>
+              <input value={playlistTitle} onChange={e=>setPlaylistTitle(e.target.value)} placeholder="Name der Playlist…"
+                style={{width:'100%',background:'#1e293b',border:'1px solid #334155',borderRadius:8,color:'#fff',padding:'8px 12px',fontSize:13,marginBottom:10,boxSizing:'border-box'}}/>
+              {playlistItems.length===0?(
+                <div style={{color:'#475569',fontSize:13,textAlign:'center',padding:'30px 0'}}>Schulungen aus der linken Liste hinzufügen</div>
+              ):(
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {playlistItems.map((item,idx)=>(
+                    <div key={item.presId} style={{background:'#1e293b',border:'1px solid #334155',borderRadius:10,padding:'8px 12px',display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{color:'#f97316',fontWeight:900,fontSize:16,width:20,textAlign:'center'}}>{idx+1}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{color:'#fff',fontSize:13,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.title}</div>
+                        <div style={{color:'#64748b',fontSize:11}}>{item.slide_count} Folien</div>
+                      </div>
+                      <div style={{display:'flex',gap:2}}>
+                        <button onClick={()=>moveItem(idx,-1)} disabled={idx===0}
+                          style={{background:'rgba(255,255,255,0.05)',border:'1px solid #334155',borderRadius:4,color:'#94a3b8',padding:'2px 7px',cursor:'pointer',opacity:idx===0?0.3:1}}>↑</button>
+                        <button onClick={()=>moveItem(idx,1)} disabled={idx===playlistItems.length-1}
+                          style={{background:'rgba(255,255,255,0.05)',border:'1px solid #334155',borderRadius:4,color:'#94a3b8',padding:'2px 7px',cursor:'pointer',opacity:idx===playlistItems.length-1?0.3:1}}>↓</button>
+                        <button onClick={()=>setPlaylistItems(prev=>prev.filter((_,i)=>i!==idx))}
+                          style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:4,color:'#f87171',padding:'2px 7px',cursor:'pointer'}}>✕</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {playlistItems.length>=2&&playlistTitle.trim()&&(
+                <button onClick={savePlaylist}
+                  style={{marginTop:14,width:'100%',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',border:'none',borderRadius:8,padding:'10px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+                  💾 Playlist speichern
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Main list
     return (
       <div style={{background:'#0a0f1a',minHeight:'100vh'}} className="p-5">
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-white font-bold text-lg">Trainingscenter</h2>
             <p className="text-slate-400 text-sm">Schulungen verwalten und starten</p>
           </div>
-          <button
-            onClick={() => setView("upload")}
-            className="bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-          >
-            + PDF hochladen
-          </button>
+          <div style={{display:'flex',gap:6}}>
+            {listTab==='playlists'&&<button onClick={()=>{setPlaylistView(true);setEditingPlaylist(null);setPlaylistTitle('');setPlaylistItems([]);}}
+              style={{background:'rgba(249,115,22,0.15)',color:'#f97316',border:'1px solid rgba(249,115,22,0.3)',borderRadius:8,padding:'6px 14px',fontSize:13,fontWeight:700,cursor:'pointer'}}>
+              + Playlist erstellen
+            </button>}
+            {listTab==='einzeln'&&<button onClick={() => setView("upload")}
+              style={{background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',border:'none',borderRadius:8,padding:'6px 14px',fontSize:13,fontWeight:700,cursor:'pointer'}}>
+              + PDF hochladen
+            </button>}
+          </div>
+        </div>
+        {/* Tabs */}
+        <div style={{display:'flex',gap:4,marginBottom:16,borderBottom:'1px solid #1e293b',paddingBottom:8}}>
+          {['einzeln','playlists'].map(t=>(
+            <button key={t} onClick={()=>setListTab(t)}
+              className="px-3 py-1.5 rounded-lg font-bold text-sm"
+              style={{background:listTab===t?'linear-gradient(135deg,#f97316,#ea580c)':'rgba(255,255,255,0.04)',
+                color:listTab===t?'#fff':'#888',border:'1.5px solid '+(listTab===t?'#f97316':'rgba(255,255,255,0.08)')}}>
+              {t==='einzeln'?'📄 Einzelne Schulungen':'🎬 Playlists'}
+            </button>
+          ))}
         </div>
 
         {presentations.length === 0 ? (
@@ -14512,6 +14678,79 @@ function TrainingAdmin({ supabase }) {
               </div>
             ))}
           </div>
+        )}
+        {/* Playlists Tab */}
+        {listTab==='playlists'&&(
+          playlists.length===0?(
+            <div style={{textAlign:'center',padding:'60px 0',color:'#475569'}}>
+              <div style={{fontSize:40,marginBottom:10}}>🎬</div>
+              <div style={{fontSize:14}}>Noch keine Playlists vorhanden</div>
+              <div style={{fontSize:12,marginTop:4}}>Erstelle eine Playlist um mehrere Schulungen zu kombinieren</div>
+            </div>
+          ):(
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {playlists.map(pl=>{
+                const totalSlides=pl.presentations.reduce((s,p)=>{const found=presentations.find(pr=>pr.id===p.presId);return s+(found?.slide_count||0);},0);
+                return(
+                  <div key={pl.id} style={{background:'#1e293b',border:'1px solid #334155',borderRadius:12,padding:'14px 16px'}}>
+                    <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+                      {/* Stacked preview */}
+                      <div style={{position:'relative',width:96,height:56,flexShrink:0}}>
+                        {pl.presentations.slice(0,3).map((item,i)=>(
+                          <div key={i} style={{position:'absolute',top:i*4,left:i*4,width:80,height:45,borderRadius:5,overflow:'hidden',border:'1px solid #475569',zIndex:3-i}}>
+                            <SlideImage supabase={supabase} presId={item.presId} index={1} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{color:'#fff',fontWeight:700,fontSize:14}}>{pl.title}</div>
+                        <div style={{color:'#64748b',fontSize:12,marginTop:2}}>{pl.presentations.length} Schulungen · {totalSlides} Folien gesamt</div>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:6}}>
+                          {pl.presentations.map((item,i)=>(
+                            <span key={i} style={{background:'rgba(249,115,22,0.1)',border:'1px solid rgba(249,115,22,0.2)',borderRadius:4,padding:'1px 7px',fontSize:11,color:'#f97316',fontWeight:600}}>
+                              {i+1}. {item.title}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{display:'flex',flexDirection:'column',gap:6,flexShrink:0}}>
+                        {startTimePicker === pl.id ? (
+                          <div style={{display:'flex',flexDirection:'column',gap:5,alignItems:'flex-end'}}>
+                            <div style={{display:'flex',gap:5,alignItems:'center'}}>
+                              <span style={{color:'#94a3b8',fontSize:11}}>Startzeit:</span>
+                              <input type="time" value={startTimeVal} onChange={e=>setStartTimeVal(e.target.value)}
+                                style={{background:'#1e293b',border:'1px solid #334155',borderRadius:5,color:'#fff',padding:'2px 7px',fontSize:12}}/>
+                            </div>
+                            <div style={{display:'flex',gap:4}}>
+                              <button onClick={()=>{
+                                let st=null;
+                                if(startTimeVal){const[h,m]=startTimeVal.split(':').map(Number);const now=new Date();st=new Date(now.getFullYear(),now.getMonth(),now.getDate(),h,m,0).toISOString();}
+                                startPlaylist(pl,st);
+                              }} style={{background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',border:'none',borderRadius:6,padding:'4px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}>▶ Starten</button>
+                              <button onClick={()=>setStartTimePicker(null)} style={{background:'rgba(255,255,255,0.05)',color:'#94a3b8',border:'1px solid #334155',borderRadius:6,padding:'4px 8px',fontSize:11,cursor:'pointer'}}>✕</button>
+                            </div>
+                          </div>
+                        ):(
+                          <button onClick={()=>setStartTimePicker(pl.id)}
+                            style={{background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',border:'none',borderRadius:7,padding:'6px 14px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                            ▶ Starten
+                          </button>
+                        )}
+                        <button onClick={()=>{setPlaylistView(true);setEditingPlaylist(pl);setPlaylistTitle(pl.title);setPlaylistItems(pl.presentations);}}
+                          style={{background:'rgba(255,255,255,0.04)',color:'#94a3b8',border:'1px solid #334155',borderRadius:7,padding:'5px 12px',fontSize:12,cursor:'pointer'}}>
+                          ✏️ Bearbeiten
+                        </button>
+                        <button onClick={()=>deletePlaylist(pl)}
+                          style={{background:'rgba(239,68,68,0.08)',color:'#f87171',border:'1px solid rgba(239,68,68,0.2)',borderRadius:7,padding:'5px 12px',fontSize:12,cursor:'pointer'}}>
+                          🗑 Löschen
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         )}
       </div>
     );
@@ -14637,6 +14876,16 @@ function TrainingAdmin({ supabase }) {
             ← Zurück
           </button>
           <div style={{flex:1,textAlign:'center',color:'#94a3b8',fontSize:13,fontWeight:600}}>
+            {session?.playlist_id && (() => {
+              const pl = playlists.find(p=>p.id===session.playlist_id);
+              if (!pl) return null;
+              const idx = session.playlist_index||0;
+              return (
+                <span style={{color:'#6366f1',fontSize:11,fontWeight:600,background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.2)',borderRadius:5,padding:'2px 8px'}}>
+                  Playlist: {idx+1}/{pl.presentations.length}
+                </span>
+              );
+            })()}
             {isPaused ? (
               <span style={{color:'#f97316',display:'flex',alignItems:'center',gap:8}}>
                 {session?.pause_type==='mittagspause'?'☕':'⏸'}
@@ -14655,6 +14904,19 @@ function TrainingAdmin({ supabase }) {
             style={{background:'#f97316',color:'#fff',border:'none',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13,cursor:'pointer',opacity:currentSlide>=selectedPres.slide_count||isPaused?0.3:1}}>
             Weiter →
           </button>
+          {session?.playlist_id && (() => {
+            const pl = playlists.find(p=>p.id===session.playlist_id);
+            const nextIdx = (session.playlist_index||0)+1;
+            const hasNext = pl && nextIdx < pl.presentations.length;
+            if (!hasNext) return null;
+            const nextPres = presentations.find(p=>p.id===pl.presentations[nextIdx]?.presId);
+            return (
+              <button onClick={nextPlaylistPres} disabled={isPaused}
+                style={{background:'rgba(99,102,241,0.2)',color:'#a5b4fc',border:'1px solid rgba(99,102,241,0.4)',borderRadius:8,padding:'8px 12px',fontWeight:700,fontSize:12,cursor:'pointer',opacity:isPaused?0.3:1}}>
+                ⏭ {nextPres?.title||'Weiter'}
+              </button>
+            );
+          })()}
           {isPaused ? (
             <button onClick={endPause}
               style={{background:'rgba(34,197,94,0.2)',color:'#86efac',border:'1px solid rgba(34,197,94,0.4)',borderRadius:8,padding:'8px 14px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
@@ -14945,12 +15207,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -15042,6 +15306,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
