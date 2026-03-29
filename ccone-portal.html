@@ -226,7 +226,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.0.3';
+        const APP_VERSION = '6.0.4';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -1195,7 +1195,7 @@ function getOrCreateSheet(){
 
 
             return(
-                <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+                <div style={{minHeight:'100vh', background: view==='user-training' ? '#0a0f1a' : undefined}} className={view==='user-training' ? '' : 'bg-gradient-to-br from-slate-50 to-slate-100'}>
                     {upgrading&&<UpgradeAnimation version={APP_VERSION} onComplete={()=>{
                         localStorage.setItem('ccone-app-version',APP_VERSION);
                         setUpgrading(false);
