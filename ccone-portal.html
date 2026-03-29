@@ -17,6 +17,7 @@
     <style>
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -206,6 +207,7 @@
         .game-float{animation:float-game 4s ease-in-out infinite}
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -214,13 +216,14 @@
     <script type="text/babel">
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.9.7';
+        const APP_VERSION = '5.9.8';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -238,6 +241,8 @@
         // ── Supabase Konfiguration ──
         const SUPABASE_URL = 'https://jblgpzqwjpjscmkfsupf.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_KC_Y-rjIkpa0CTvtGc4p8Q_MqHC7SpQ';
+        let _sbClient=null;
+        function getSbClient(){if(!_sbClient&&window.supabase){_sbClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);}return _sbClient;}
         const getBackendMode = () => {
             // URL-Notschalter: ?backend=google erzwingt Google Sheets
             const urlMode = new URLSearchParams(window.location.search).get('backend');
@@ -1418,7 +1423,19 @@ function getOrCreateSheet(){
             // Assignments now automatic - quizzes use targetGroup field
 
             if(activeTab==='training'){
-                return<VNRTrainingCenter currentUser={currentUser} appData={filteredData} updateData={updateData} showNotification={showNotification} onLogout={onLogout} onNavigate={(v)=>{if(v==='admin')setActiveTab('overview')}} refreshData={refreshData}/>;
+                const isAdminUser=currentUser.role==='admin'||currentUser.role==='teamleiter';
+                const sbClient=getSbClient();
+                return<TrainingHub
+                    currentUser={currentUser}
+                    appData={filteredData}
+                    updateData={updateData}
+                    showNotification={showNotification}
+                    onLogout={onLogout}
+                    onNavigate={(v)=>{if(v==='admin')setActiveTab('overview')}}
+                    refreshData={refreshData}
+                    isAdmin={isAdminUser}
+                    sbClient={sbClient}
+                />;
             }
 
             if(editingQuiz){
@@ -13984,7 +14001,562 @@ Regeln:
             </div>);
         }
 
+
+        // ─── EKD Trainingscenter (Schulungen per PDF) ────────────────────────
+
+
+const PDFJS_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+function loadPdfJs() {
+  return new Promise((resolve, reject) => {
+    if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
+    const script = document.createElement("script");
+    script.src = PDFJS_CDN;
+    script.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+      resolve(window.pdfjsLib);
+    };
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+function toSlug(title) {
+  return title.toLowerCase()
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function slideUrl(supabase, presId, index) {
+  const pad = String(index).padStart(2, "0");
+  const { data } = supabase.storage.from("training-slides").getPublicUrl(`${presId}/slide-${pad}.jpg`);
+  return data.publicUrl;
+}
+
+function UploadView({ supabase, onDone }) {
+  const [title, setTitle] = React.useState("");
+  const [file, setFile] = React.useState(null);
+  const [phase, setPhase] = React.useState("idle"); // idle | converting | uploading | done | error
+  const [progress, setProgress] = React.useState({ current: 0, total: 0, label: "" });
+  const [errorMsg, setErrorMsg] = React.useState("");
+  const dropRef = React.useRef();
+
+  function onDrop(e) {
+    e.preventDefault();
+    const f = e.dataTransfer?.files?.[0] || e.target.files?.[0];
+    if (f && f.type === "application/pdf") setFile(f);
+  }
+
+  async function startConversion() {
+    if (!file || !title.trim()) return;
+    const presId = toSlug(title.trim());
+    setPhase("converting");
+    setErrorMsg("");
+
+    try {
+      setProgress({ current: 0, total: 0, label: "PDF.js wird geladen…" });
+      const pdfjsLib = await loadPdfJs();
+
+      setProgress({ current: 0, total: 0, label: "PDF wird gelesen…" });
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const totalPages = pdf.numPages;
+
+      const slidesMeta = [];
+      const blobs = [];
+      for (let i = 1; i <= totalPages; i++) {
+        setProgress({ current: i, total: totalPages, label: `Konvertiere Folie ${i} von ${totalPages}…` });
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 2.0 }); // hohe Qualität
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext("2d");
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.88));
+        blobs.push(blob);
+        slidesMeta.push({ index: i, title: `Folie ${i}` });
+      }
+
+      setPhase("uploading");
+      for (let i = 0; i < blobs.length; i++) {
+        const pad = String(i + 1).padStart(2, "0");
+        const path = `${presId}/slide-${pad}.jpg`;
+        setProgress({ current: i + 1, total: blobs.length, label: `Upload Folie ${i + 1} von ${blobs.length}…` });
+        const { error } = await supabase.storage
+          .from("training-slides")
+          .upload(path, blobs[i], { contentType: "image/jpeg", upsert: true });
+        if (error) throw new Error(`Storage Upload fehlgeschlagen: ${error.message}`);
+      }
+
+      setProgress({ current: blobs.length, total: blobs.length, label: "Manifest wird gespeichert…" });
+      const { error: dbErr } = await supabase.from("training_presentations").upsert({
+        id: presId,
+        title: title.trim(),
+        slide_count: totalPages,
+        slides: slidesMeta
+      });
+      if (dbErr) throw new Error(`Datenbank-Fehler: ${dbErr.message}`);
+
+      setPhase("done");
+      setProgress({ current: totalPages, total: totalPages, label: "Fertig!" });
+      setTimeout(() => onDone(), 1500);
+
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(err.message);
+      setPhase("error");
+    }
+  }
+
+  const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+  const isProcessing = phase === "converting" || phase === "uploading";
+
+  return (
+    <div className="max-w-xl mx-auto p-6" style={{color:'inherit'}}>
+      <h3 className="text-white font-bold text-lg mb-1">Neue Schulung hochladen</h3>
+      <p className="text-slate-400 text-sm mb-5">PDF hochladen – Folien werden automatisch konvertiert und gespeichert.</p>
+
+      {}
+      <div className="mb-4">
+        <label className="text-slate-400 text-xs font-medium block mb-1">Name der Schulung</label>
+        <input
+          type="text"
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="z.B. Basisschulung EKD"
+          disabled={isProcessing}
+          className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-orange-500"
+        />
+      </div>
+
+      {}
+      <div
+        ref={dropRef}
+        onDrop={onDrop}
+        onDragOver={e => e.preventDefault()}
+        onClick={() => !isProcessing && dropRef.current.querySelector("input").click()}
+        className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
+          ${file ? "border-orange-500 bg-orange-500/5" : "border-slate-600 hover:border-slate-400 bg-slate-800/50"}
+          ${isProcessing ? "pointer-events-none opacity-60" : ""}`}
+      >
+        <input type="file" accept="application/pdf" className="hidden" onChange={onDrop} />
+        {file ? (
+          <>
+            <div className="text-3xl mb-2">📄</div>
+            <div className="text-orange-400 font-medium text-sm">{file.name}</div>
+            <div className="text-slate-500 text-xs mt-1">{(file.size / 1024 / 1024).toFixed(1)} MB</div>
+          </>
+        ) : (
+          <>
+            <div className="text-3xl mb-2">⬆️</div>
+            <div className="text-slate-300 text-sm font-medium">PDF hierher ziehen oder klicken</div>
+            <div className="text-slate-500 text-xs mt-1">Nur PDF-Dateien</div>
+          </>
+        )}
+      </div>
+
+      {}
+      {isProcessing && (
+        <div className="mt-5">
+          <div className="flex justify-between text-xs text-slate-400 mb-1">
+            <span>{progress.label}</span>
+            <span>{pct}%</span>
+          </div>
+          <div className="w-full bg-slate-700 rounded-full h-2">
+            <div
+              className="bg-orange-500 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <p className="text-slate-500 text-xs mt-2 text-center">
+            {phase === "converting" ? "Seiten werden im Browser gerendert…" : "Bilder werden hochgeladen…"}
+          </p>
+        </div>
+      )}
+
+      {}
+      {phase === "done" && (
+        <div className="mt-4 bg-green-900/30 border border-green-700 rounded-lg p-3 text-green-400 text-sm text-center">
+          ✓ Schulung gespeichert – wird geladen…
+        </div>
+      )}
+
+      {}
+      {phase === "error" && (
+        <div className="mt-4 bg-red-900/30 border border-red-700 rounded-lg p-3 text-red-400 text-sm">
+          ⚠ Fehler: {errorMsg}
+        </div>
+      )}
+
+      {}
+      {!isProcessing && phase !== "done" && (
+        <button
+          onClick={startConversion}
+          disabled={!file || !title.trim()}
+          className="mt-5 w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg transition-colors text-sm"
+        >
+          Schulung verarbeiten & speichern
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TrainingAdmin({ supabase }) {
+  const [presentations, setPresentations] = React.useState([]);
+  const [view, setView] = React.useState("list"); // list | upload | present
+  const [session, setSession] = React.useState(null);
+  const [selectedPres, setSelectedPres] = React.useState(null);
+  const [currentSlide, setCurrentSlide] = React.useState(1);
+  const [deleting, setDeleting] = React.useState(null);
+  const sessionRef = React.useRef(null);
+
+  React.useEffect(() => {
+    loadPresentations();
+    loadActiveSession();
+    const ch = supabase.channel("admin-sessions")
+      .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions" }, loadActiveSession)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
+
+  async function loadPresentations() {
+    const { data } = await supabase.from("training_presentations").select("*").order("created_at", { ascending: false });
+    if (data) setPresentations(data);
+  }
+
+  async function loadActiveSession() {
+    const { data } = await supabase.from("training_sessions").select("*").eq("active", true)
+      .order("started_at", { ascending: false }).limit(1).maybeSingle();
+    if (data) {
+      setSession(data);
+      setCurrentSlide(data.slide_index);
+      sessionRef.current = data.id;
+    } else {
+      setSession(null);
+      sessionRef.current = null;
+    }
+  }
+
+  async function startSession(pres) {
+    await supabase.from("training_sessions").update({ active: false }).eq("active", true);
+    const { data } = await supabase.from("training_sessions")
+      .insert({ presentation: pres.id, slide_index: 1, active: true })
+      .select().single();
+    setSession(data);
+    setSelectedPres(pres);
+    setCurrentSlide(1);
+    sessionRef.current = data.id;
+    setView("present");
+  }
+
+  async function stopSession() {
+    if (!sessionRef.current) return;
+    await supabase.from("training_sessions").update({ active: false }).eq("id", sessionRef.current);
+    setSession(null);
+    sessionRef.current = null;
+    setView("list");
+  }
+
+  async function goToSlide(idx) {
+    if (!sessionRef.current) return;
+    setCurrentSlide(idx);
+    await supabase.from("training_sessions").update({
+      slide_index: idx, updated_at: new Date().toISOString()
+    }).eq("id", sessionRef.current);
+  }
+
+  async function deletePresentation(pres) {
+    setDeleting(pres.id);
+    const paths = Array.from({ length: pres.slide_count }, (_, i) => {
+      const pad = String(i + 1).padStart(2, "0");
+      return `${pres.id}/slide-${pad}.jpg`;
+    });
+    await supabase.storage.from("training-slides").remove(paths);
+    await supabase.from("training_presentations").delete().eq("id", pres.id);
+    setDeleting(null);
+    loadPresentations();
+  }
+
+  if (view === "list") {
+    return (
+      <div style={{background:'#0a0f1a',minHeight:'100vh'}} className="p-5">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-white font-bold text-lg">Trainingscenter</h2>
+            <p className="text-slate-400 text-sm">Schulungen verwalten und starten</p>
+          </div>
+          <button
+            onClick={() => setView("upload")}
+            className="bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            + PDF hochladen
+          </button>
+        </div>
+
+        {presentations.length === 0 ? (
+          <div className="text-center py-16 text-slate-500">
+            <div className="text-4xl mb-3">📂</div>
+            <div className="text-base">Noch keine Schulungen vorhanden</div>
+            <div className="text-sm mt-1">Lade eine PDF-Datei hoch, um loszulegen.</div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {presentations.map(pres => (
+              <div key={pres.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center gap-4">
+                {}
+                <img
+                  src={slideUrl(supabase, pres.id, 1)}
+                  alt={pres.title}
+                  className="w-24 h-14 object-cover rounded-lg border border-slate-600 flex-shrink-0 bg-slate-900"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-white font-semibold truncate">{pres.title}</div>
+                  <div className="text-slate-400 text-xs mt-0.5">{pres.slide_count} Folien · ID: {pres.id}</div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => startSession(pres)}
+                    className="bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                  >
+                    ▶ Starten
+                  </button>
+                  <button
+                    onClick={() => deletePresentation(pres)}
+                    disabled={deleting === pres.id}
+                    className="bg-slate-700 hover:bg-red-900 text-slate-400 hover:text-red-300 text-sm px-3 py-2 rounded-lg transition-colors"
+                  >
+                    {deleting === pres.id ? "…" : "🗑"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (view === "upload") {
+    return (
+      <div style={{background:'#0a0f1a',minHeight:'100vh'}}>
+        <div className="p-5 border-b border-slate-700 flex items-center gap-3">
+          <button onClick={() => setView("list")} className="text-slate-400 hover:text-white text-sm transition-colors">← Zurück</button>
+          <span className="text-slate-600">|</span>
+          <span className="text-white font-semibold text-sm">PDF hochladen</span>
+        </div>
+        <UploadView supabase={supabase} onDone={() => { loadPresentations(); setView("list"); }} />
+      </div>
+    );
+  }
+
+  if (view === "present" && selectedPres) {
+    return (
+      <div className="flex flex-col" style={{height:"calc(100vh - 120px)",background:'#0a0f1a'}}>
+        {}
+        <div className="flex-1 flex bg-black overflow-hidden">
+          <div className="flex-1 flex items-center justify-center relative">
+            <img
+              key={`${selectedPres.id}-${currentSlide}`}
+              src={slideUrl(supabase, selectedPres.id, currentSlide)}
+              alt={`Folie ${currentSlide}`}
+              className="max-w-full max-h-full object-contain"
+              style={{ maxHeight: "calc(100vh - 200px)" }}
+            />
+            <div className="absolute bottom-3 right-4 bg-black/70 text-white text-sm px-3 py-1 rounded-full">
+              {currentSlide} / {selectedPres.slide_count}
+            </div>
+          </div>
+
+          {}
+          <div className="w-48 bg-slate-900 border-l border-slate-700 overflow-y-auto flex-shrink-0">
+            <div className="p-2 border-b border-slate-700">
+              <div className="text-white text-xs font-semibold truncate">{selectedPres.title}</div>
+            </div>
+            <div className="p-2 space-y-1">
+              {Array.from({ length: selectedPres.slide_count }, (_, i) => i + 1).map(idx => (
+                <button
+                  key={idx}
+                  onClick={() => goToSlide(idx)}
+                  className={`w-full rounded-lg overflow-hidden border transition-all ${
+                    idx === currentSlide ? "border-orange-500 ring-1 ring-orange-500" : "border-slate-700 hover:border-slate-500"
+                  }`}
+                >
+                  <img
+                    src={slideUrl(supabase, selectedPres.id, idx)}
+                    alt={`Folie ${idx}`}
+                    className="w-full"
+                    style={{ aspectRatio: "16/9", objectFit: "cover" }}
+                    loading="lazy"
+                  />
+                  <div className={`px-1.5 py-0.5 bg-slate-800 text-xs text-left truncate ${idx === currentSlide ? "text-orange-400" : "text-slate-500"}`}>
+                    {idx}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {}
+        <div className="bg-slate-900 border-t border-slate-700 px-4 py-3 flex items-center gap-3 flex-shrink-0">
+          <button
+            onClick={() => goToSlide(Math.max(1, currentSlide - 1))}
+            disabled={currentSlide <= 1}
+            className="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 text-white px-5 py-2 rounded-lg font-semibold text-sm transition-colors"
+          >
+            ← Zurück
+          </button>
+          <div className="flex-1 text-center text-slate-300 text-sm font-medium truncate">
+            {selectedPres.title} · Folie {currentSlide}
+          </div>
+          <button
+            onClick={() => goToSlide(Math.min(selectedPres.slide_count, currentSlide + 1))}
+            disabled={currentSlide >= selectedPres.slide_count}
+            className="bg-orange-600 hover:bg-orange-500 disabled:opacity-30 text-white px-5 py-2 rounded-lg font-semibold text-sm transition-colors"
+          >
+            Weiter →
+          </button>
+          <button
+            onClick={stopSession}
+            className="bg-red-900 hover:bg-red-800 text-red-300 px-4 py-2 rounded-lg text-sm transition-colors ml-2"
+          >
+            Beenden
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function TrainingAgent({ supabase }) {
+  const [session, setSession] = React.useState(null);
+  const [pres, setPres] = React.useState(null);
+  const [currentSlide, setCurrentSlide] = React.useState(1);
+  const [imgError, setImgError] = React.useState(false);
+
+  React.useEffect(() => {
+    loadSession();
+    const ch = supabase.channel("agent-session")
+      .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions" }, payload => {
+        if (payload.new?.active) {
+          setSession(payload.new);
+          setCurrentSlide(payload.new.slide_index);
+          setImgError(false);
+          loadPres(payload.new.presentation);
+        } else if (payload.eventType === "UPDATE" && !payload.new.active) {
+          setSession(null);
+          setPres(null);
+        }
+      })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
+
+  async function loadSession() {
+    const { data } = await supabase.from("training_sessions").select("*")
+      .eq("active", true).order("started_at", { ascending: false }).limit(1).maybeSingle();
+    if (data) {
+      setSession(data);
+      setCurrentSlide(data.slide_index);
+      loadPres(data.presentation);
+    }
+  }
+
+  async function loadPres(presId) {
+    const { data } = await supabase.from("training_presentations").select("*").eq("id", presId).maybeSingle();
+    if (data) setPres(data);
+  }
+
+  if (!session || !pres) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-slate-500" style={{background:'#0a0f1a',minHeight:'100vh'}}>
+        <div className="text-5xl mb-4">📺</div>
+        <div className="text-base font-medium text-slate-400">Keine aktive Schulung</div>
+        <div className="text-sm mt-1">Der Trainer startet gleich die Präsentation.</div>
+        <div className="flex items-center gap-2 mt-4 text-xs text-slate-600">
+          <span className="w-2 h-2 rounded-full bg-slate-600 animate-pulse inline-block"></span>
+          Warte auf Verbindung…
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center p-4" style={{background:'#0a0f1a',minHeight:'100vh'}}>
+      <div className="w-full max-w-4xl flex items-center justify-between mb-3">
+        <span className="text-orange-400 font-semibold text-sm">{pres.title}</span>
+        <span className="text-slate-500 text-sm">{currentSlide} / {pres.slide_count}</span>
+      </div>
+      <div className="w-full max-w-4xl bg-black rounded-xl overflow-hidden border border-slate-700 shadow-2xl">
+        {imgError ? (
+          <div className="aspect-video flex items-center justify-center bg-slate-800 text-slate-400 text-sm">
+            Folie {currentSlide} wird geladen…
+          </div>
+        ) : (
+          <img
+            key={`${pres.id}-${currentSlide}`}
+            src={slideUrl(supabase, pres.id, currentSlide)}
+            alt={`Folie ${currentSlide}`}
+            className="w-full"
+            style={{ aspectRatio: "16/9", objectFit: "contain" }}
+            onError={() => setImgError(true)}
+            onLoad={() => setImgError(false)}
+          />
+        )}
+      </div>
+      <div className="flex items-center gap-2 mt-3 text-xs text-slate-500">
+        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block"></span>
+        Live – Folie wird vom Trainer gesteuert
+      </div>
+    </div>
+  );
+}
+
+function TrainingCenter({ supabase, isAdmin }) {
+  return isAdmin
+    ? <TrainingAdmin supabase={supabase} />
+    : <TrainingAgent supabase={supabase} />;
+}
+
+
+        // TrainingHub: wrapper mit Sub-Tabs (Materialien + EKD Schulungen)
+        function TrainingHub({currentUser,appData,updateData,showNotification,onLogout,onNavigate,refreshData,isAdmin,sbClient}){
+            const [subTab,setSubTab]=React.useState('materialien');
+            const tabs=[
+                {id:'materialien',label:'📚 Materialien'},
+                {id:'ekd-schulungen',label:'🎓 EKD Schulungen'},
+            ];
+            return(
+                <div style={{display:'flex',flexDirection:'column',minHeight:'100vh',background:'#0a0f1a'}}>
+                    <div style={{display:'flex',gap:4,padding:'8px 12px 0',borderBottom:'1px solid rgba(255,255,255,0.06)',background:'#0a0f1a'}}>
+                        {tabs.map(t=>(
+                            <button key={t.id} onClick={()=>setSubTab(t.id)}
+                                className="px-3 py-1.5 rounded-lg font-bold text-sm"
+                                style={{background:subTab===t.id?'linear-gradient(135deg,#10b981,#059669)':'rgba(255,255,255,0.04)',color:subTab===t.id?'#fff':'#888',border:'1.5px solid '+(subTab===t.id?'#10b981':'rgba(255,255,255,0.08)')}}>
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div style={{flex:1,overflow:'auto',background:'#0a0f1a'}}>
+                        {subTab==='materialien'&&<VNRTrainingCenter currentUser={currentUser} appData={appData} updateData={updateData} showNotification={showNotification} onLogout={onLogout} onNavigate={onNavigate} refreshData={refreshData}/>}
+                        {subTab==='ekd-schulungen'&&(sbClient
+                            ?<TrainingCenter supabase={sbClient} isAdmin={isAdmin}/>
+                            :<div style={{padding:32,textAlign:'center',color:'#64748b'}}>Supabase nicht verfügbar</div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         ReactDOM.render(<App/>,document.getElementById('root'));
+    
     
     
     </script>
@@ -13993,6 +14565,7 @@ Regeln:
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
         // 🎨 DARK MODE FIX - Macht ALLES dunkel!
@@ -14076,6 +14649,7 @@ Regeln:
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     </script>
