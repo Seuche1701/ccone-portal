@@ -22,6 +22,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -216,6 +217,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -229,13 +231,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.0.7';
+        const APP_VERSION = '6.0.8';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14604,8 +14607,9 @@ function TrainingAgent({ supabase }) {
   const [session, setSession] = React.useState(null);
   const [pres, setPres] = React.useState(null);
   const [currentSlide, setCurrentSlide] = React.useState(1);
-  const [countdown, setCountdown] = React.useState(null); // seconds remaining
+  const [countdown, setCountdown] = React.useState(null);
   const [isLive, setIsLive] = React.useState(false);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
   const imgRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -14647,14 +14651,18 @@ function TrainingAgent({ supabase }) {
     return () => clearTimeout(t);
   }, [countdown]);
 
-  // Auto-Fullscreen sobald isLive wird
+  // Auto-Fullscreen sobald isLive wird (Electron-kompatibel via CSS-Overlay)
   React.useEffect(() => {
     if (!isLive) return;
+    setIsFullscreen(true);
+    // Auch nativen Fullscreen versuchen
     setTimeout(() => {
-      const el = imgRef.current;
-      if (el && !document.fullscreenElement) {
-        (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || (()=>{})).call(el);
-      }
+      try {
+        const el = document.documentElement;
+        if (el && !document.fullscreenElement) {
+          (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||function(){}).call(el);
+        }
+      } catch(e) {}
     }, 300);
   }, [isLive]);
 
@@ -14675,11 +14683,15 @@ function TrainingAgent({ supabase }) {
   }
 
   function toggleFullscreen() {
-    if (!imgRef.current) return;
-    if (!document.fullscreenElement) {
-      imgRef.current.requestFullscreen && imgRef.current.requestFullscreen();
+    if (isFullscreen) {
+      setIsFullscreen(false);
+      try { document.exitFullscreen && document.exitFullscreen(); } catch(e) {}
     } else {
-      document.exitFullscreen && document.exitFullscreen();
+      setIsFullscreen(true);
+      try {
+        const el = document.documentElement;
+        (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||function(){}).call(el);
+      } catch(e) {}
     }
   }
 
@@ -14707,8 +14719,8 @@ function TrainingAgent({ supabase }) {
     const secs = countdown % 60;
     return (
       <div style={{background:'#0a0f1a',minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:24}}>
-        <div style={{color:'#f97316',fontWeight:700,fontSize:22,letterSpacing:1}}>{pres.title}</div>
-        <div style={{color:'#64748b',fontSize:14}}>Schulung startet gleich – bereite dich vor</div>
+        <div style={{color:'#f97316',fontWeight:800,fontSize:28,letterSpacing:1,textAlign:'center'}}>{pres.title}</div>
+        <div style={{color:'#64748b',fontSize:17}}>Schulung startet gleich – bereite dich vor</div>
         <div style={{position:'relative',width:size,height:size}}>
           <svg width={size} height={size} style={{transform:'rotate(-90deg)'}}>
             <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e293b" strokeWidth="14"/>
@@ -14726,25 +14738,47 @@ function TrainingAgent({ supabase }) {
             <span style={{color:'#64748b',fontSize:13,marginTop:4}}>{mins > 0 ? 'Min' : 'Sekunden'}</span>
           </div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:8,color:'#f97316',fontSize:13,fontWeight:600}}>
-          <span style={{width:10,height:10,borderRadius:'50%',background:'#f97316',display:'inline-block',animation:'pulse 1s infinite'}}></span>
-          Trainer ist bereit · Präsentation startet automatisch
+        <div style={{display:'flex',alignItems:'center',gap:10,color:'#f97316',fontSize:16,fontWeight:700}}>
+          <span style={{width:12,height:12,borderRadius:'50%',background:'#f97316',display:'inline-block',animation:'pulse 1s infinite'}}></span>
+          Trainer ist bereit · Präsentation startet automatisch im Vollbild
         </div>
       </div>
     );
   }
 
-  // Live-Folie
+  // Live-Folie (Fullscreen-Overlay wenn isFullscreen)
+  if (isFullscreen) {
+    return (
+      <div
+        style={{position:'fixed',inset:0,zIndex:9999,background:'#000',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}
+        onClick={toggleFullscreen}
+        title="Klicken zum Beenden"
+      >
+        <SlideImage
+          supabase={supabase} presId={pres.id} index={currentSlide}
+          alt={`Folie ${currentSlide}`}
+          style={{width:'100vw',height:'100vh',objectFit:'contain'}}
+        />
+        <div style={{position:'absolute',bottom:16,right:16,background:'rgba(0,0,0,0.6)',borderRadius:8,padding:'4px 12px',color:'#fff',fontSize:14,fontWeight:600}}>
+          {currentSlide} / {pres.slide_count}
+        </div>
+        <div style={{position:'absolute',top:12,right:12,background:'rgba(0,0,0,0.5)',borderRadius:6,padding:'3px 10px',color:'#94a3b8',fontSize:11}}>
+          ✕ Tippen zum Beenden
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{background:'#0a0f1a',minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',padding:16}}>
-      <div style={{width:'100%',maxWidth:900,display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-        <span style={{color:'#f97316',fontWeight:600,fontSize:13}}>{pres.title}</span>
-        <span style={{color:'#475569',fontSize:13}}>{currentSlide} / {pres.slide_count}</span>
+    <div style={{background:'#0a0f1a',minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',padding:20}}>
+      <div style={{width:'100%',maxWidth:960,display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        <span style={{color:'#f97316',fontWeight:700,fontSize:16}}>{pres.title}</span>
+        <span style={{color:'#475569',fontSize:15}}>{currentSlide} / {pres.slide_count}</span>
       </div>
       <div
         ref={imgRef}
         onClick={toggleFullscreen}
-        style={{width:'100%',maxWidth:900,background:'#000',borderRadius:12,overflow:'hidden',border:'1px solid #1e293b',boxShadow:'0 25px 50px rgba(0,0,0,0.6)',cursor:'pointer'}}
+        style={{width:'100%',maxWidth:960,background:'#000',borderRadius:14,overflow:'hidden',border:'1px solid #1e293b',boxShadow:'0 30px 60px rgba(0,0,0,0.7)',cursor:'pointer'}}
         title="Klicken für Vollbild"
       >
         <SlideImage
@@ -14753,9 +14787,9 @@ function TrainingAgent({ supabase }) {
           style={{width:"100%",aspectRatio:"16/9",objectFit:"contain"}}
         />
       </div>
-      <div style={{display:'flex',alignItems:'center',gap:6,marginTop:10,color:'#475569',fontSize:12}}>
-        <span style={{width:8,height:8,borderRadius:'50%',background:'#22c55e',display:'inline-block',animation:'pulse 2s infinite'}}></span>
-        Live · Folie wird vom Trainer gesteuert · Klick für Vollbild
+      <div style={{display:'flex',alignItems:'center',gap:8,marginTop:14,color:'#475569',fontSize:14}}>
+        <span style={{width:10,height:10,borderRadius:'50%',background:'#22c55e',display:'inline-block',animation:'pulse 2s infinite'}}></span>
+        Live · Folie wird vom Trainer gesteuert · <span style={{color:'#64748b'}}>Bild antippen für Vollbild</span>
       </div>
     </div>
   );
@@ -14816,12 +14850,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -14910,6 +14946,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
