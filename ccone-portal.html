@@ -23,6 +23,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -218,6 +219,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -232,13 +234,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.0.8';
+        const APP_VERSION = '6.0.9';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14282,6 +14285,9 @@ function TrainingAdmin({ supabase }) {
   const [startTimePicker, setStartTimePicker] = React.useState(null);
   const [startTimeVal, setStartTimeVal] = React.useState('');
   const [adminCountdown, setAdminCountdown] = React.useState(null);
+  const [pausePicker, setPausePicker] = React.useState(null); // 'mittagspause'|'kurzpause'|null
+  const [pauseMins, setPauseMins] = React.useState(30);
+  const [isPaused, setIsPaused] = React.useState(false);
   const sessionRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -14305,7 +14311,7 @@ function TrainingAdmin({ supabase }) {
       setSession(data);
       setCurrentSlide(data.slide_index);
       sessionRef.current = data.id;
-      // Admin-Countdown
+      setIsPaused(!!data.pause_type);
       if (data.start_time) {
         const secs = Math.ceil((new Date(data.start_time).getTime() - Date.now()) / 1000);
         setAdminCountdown(secs > 0 ? secs : null);
@@ -14314,6 +14320,7 @@ function TrainingAdmin({ supabase }) {
       setSession(null);
       sessionRef.current = null;
       setAdminCountdown(null);
+      setIsPaused(false);
     }
   }
 
@@ -14342,10 +14349,25 @@ function TrainingAdmin({ supabase }) {
 
   async function stopSession() {
     if (!sessionRef.current) return;
-    await supabase.from("training_sessions").update({ active: false }).eq("id", sessionRef.current);
+    await supabase.from("training_sessions").update({ active: false, pause_type: null, pause_until: null }).eq("id", sessionRef.current);
     setSession(null);
     sessionRef.current = null;
+    setIsPaused(false);
     setView("list");
+  }
+
+  async function startPause(type, mins) {
+    if (!sessionRef.current) return;
+    const until = new Date(Date.now() + mins * 60 * 1000).toISOString();
+    await supabase.from("training_sessions").update({ pause_type: type, pause_until: until }).eq("id", sessionRef.current);
+    setIsPaused(true);
+    setPausePicker(null);
+  }
+
+  async function endPause() {
+    if (!sessionRef.current) return;
+    await supabase.from("training_sessions").update({ pause_type: null, pause_until: null }).eq("id", sessionRef.current);
+    setIsPaused(false);
   }
 
   async function goToSlide(idx) {
@@ -14570,29 +14592,63 @@ function TrainingAdmin({ supabase }) {
           </div>
         </div>
 
-        {}
-        <div className="bg-slate-900 border-t border-slate-700 px-4 py-3 flex items-center gap-3 flex-shrink-0">
-          <button
-            onClick={() => goToSlide(Math.max(1, currentSlide - 1))}
-            disabled={currentSlide <= 1}
-            className="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 text-white px-5 py-2 rounded-lg font-semibold text-sm transition-colors"
-          >
+        {/* Pause-Picker Modal */}
+        {pausePicker && (
+          <div style={{position:'absolute',bottom:70,left:'50%',transform:'translateX(-50%)',zIndex:100,background:'#1e293b',border:'1px solid #334155',borderRadius:14,padding:'16px 20px',minWidth:280,boxShadow:'0 10px 40px rgba(0,0,0,0.6)'}}>
+            <div style={{color:'#fff',fontWeight:700,fontSize:14,marginBottom:12}}>{pausePicker==='mittagspause'?'☕ Mittagspause':'⏸ Kurzpause'} – Dauer festlegen</div>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+              {[15,20,30,45,60].map(m=>(
+                <button key={m} onClick={()=>setPauseMins(m)}
+                  style={{padding:'6px 12px',borderRadius:8,border:'1.5px solid '+(pauseMins===m?'#f97316':'#334155'),background:pauseMins===m?'rgba(249,115,22,0.15)':'rgba(255,255,255,0.04)',color:pauseMins===m?'#f97316':'#94a3b8',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                  {m}m
+                </button>
+              ))}
+              <input type="number" min="1" max="120" value={pauseMins} onChange={e=>setPauseMins(Number(e.target.value))}
+                style={{width:56,padding:'5px 8px',borderRadius:8,border:'1px solid #334155',background:'#0f172a',color:'#fff',fontSize:13,textAlign:'center'}}/>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>startPause(pausePicker,pauseMins)}
+                style={{flex:1,padding:'8px',borderRadius:8,background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',fontWeight:700,fontSize:13,border:'none',cursor:'pointer'}}>
+                Pause starten
+              </button>
+              <button onClick={()=>setPausePicker(null)}
+                style={{padding:'8px 14px',borderRadius:8,background:'rgba(255,255,255,0.05)',color:'#94a3b8',border:'1px solid #334155',cursor:'pointer',fontSize:13}}>
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+        <div style={{background:'#0f172a',borderTop:'1px solid #1e293b',padding:'10px 16px',display:'flex',alignItems:'center',gap:8,flexShrink:0,flexWrap:'wrap'}}>
+          <button onClick={() => goToSlide(Math.max(1, currentSlide - 1))} disabled={currentSlide<=1||isPaused}
+            style={{background:'#1e293b',color:'#fff',border:'1px solid #334155',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13,cursor:'pointer',opacity:currentSlide<=1||isPaused?0.3:1}}>
             ← Zurück
           </button>
-          <div className="flex-1 text-center text-slate-300 text-sm font-medium truncate">
-            {selectedPres.title} · Folie {currentSlide}
+          <div style={{flex:1,textAlign:'center',color:'#94a3b8',fontSize:13,fontWeight:600}}>
+            {isPaused ? <span style={{color:'#f97316'}}>⏸ PAUSE AKTIV</span> : `${selectedPres.title} · Folie ${currentSlide}`}
           </div>
-          <button
-            onClick={() => goToSlide(Math.min(selectedPres.slide_count, currentSlide + 1))}
-            disabled={currentSlide >= selectedPres.slide_count}
-            className="bg-orange-600 hover:bg-orange-500 disabled:opacity-30 text-white px-5 py-2 rounded-lg font-semibold text-sm transition-colors"
-          >
+          <button onClick={() => goToSlide(Math.min(selectedPres.slide_count, currentSlide+1))} disabled={currentSlide>=selectedPres.slide_count||isPaused}
+            style={{background:'#f97316',color:'#fff',border:'none',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13,cursor:'pointer',opacity:currentSlide>=selectedPres.slide_count||isPaused?0.3:1}}>
             Weiter →
           </button>
-          <button
-            onClick={stopSession}
-            className="bg-red-900 hover:bg-red-800 text-red-300 px-4 py-2 rounded-lg text-sm transition-colors ml-2"
-          >
+          {isPaused ? (
+            <button onClick={endPause}
+              style={{background:'rgba(34,197,94,0.2)',color:'#86efac',border:'1px solid rgba(34,197,94,0.4)',borderRadius:8,padding:'8px 14px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+              ▶ Fortsetzen
+            </button>
+          ) : (
+            <>
+              <button onClick={()=>setPausePicker('kurzpause')}
+                style={{background:'rgba(249,115,22,0.1)',color:'#f97316',border:'1px solid rgba(249,115,22,0.3)',borderRadius:8,padding:'8px 12px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                ⏸ Kurzpause
+              </button>
+              <button onClick={()=>setPausePicker('mittagspause')}
+                style={{background:'rgba(249,115,22,0.1)',color:'#f97316',border:'1px solid rgba(249,115,22,0.3)',borderRadius:8,padding:'8px 12px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                ☕ Mittagspause
+              </button>
+            </>
+          )}
+          <button onClick={stopSession}
+            style={{background:'rgba(127,29,29,0.4)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:8,padding:'8px 12px',fontSize:13,cursor:'pointer'}}>
             Beenden
           </button>
         </div>
@@ -14610,6 +14666,7 @@ function TrainingAgent({ supabase }) {
   const [countdown, setCountdown] = React.useState(null);
   const [isLive, setIsLive] = React.useState(false);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [pauseSecs, setPauseSecs] = React.useState(0);
   const imgRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -14622,6 +14679,7 @@ function TrainingAgent({ supabase }) {
           loadPres(payload.new.presentation);
           checkStartTime(payload.new);
         } else if (payload.eventType === "UPDATE" && payload.new?.active) {
+          setSession(payload.new);
           setCurrentSlide(payload.new.slide_index);
         } else if (!payload.new?.active) {
           setSession(null); setPres(null); setIsLive(false); setCountdown(null);
@@ -14746,6 +14804,63 @@ function TrainingAgent({ supabase }) {
     );
   }
 
+  // Pause-Screen
+  // Pause countdown ticker (always runs, no-op when not paused)
+  React.useEffect(() => {
+    if (!session?.pause_until) { setPauseSecs(0); return; }
+    const tick = () => {
+      const s = Math.max(0, Math.ceil((new Date(session.pause_until) - Date.now())/1000));
+      setPauseSecs(s);
+    };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [session?.pause_until]);
+
+  if (isLive && session && session.pause_type) {
+    const pauseUntil = session.pause_until ? new Date(session.pause_until) : null;
+    const isMittagspause = session.pause_type === 'mittagspause';
+    const resumeTime = pauseUntil ? pauseUntil.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '';
+    const pauseMins = Math.floor(pauseSecs/60);
+    const pauseSecOnly = pauseSecs%60;
+    const totalSecs = pauseUntil && session.updated_at ? Math.ceil((pauseUntil - new Date(session.updated_at))/1000) : pauseSecs||1;
+    const pct = Math.max(0, Math.min(1, pauseSecs/totalSecs));
+    const r=110; const circ=2*Math.PI*r; const sz=260;
+    return (
+      <div style={{background:'#0d1117',minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20}}>
+        <div style={{fontSize:72}}>{isMittagspause?'☕':'⏸'}</div>
+        <div style={{color:'#f97316',fontWeight:900,fontSize:42,letterSpacing:1}}>{isMittagspause?'Mittagspause':'Kurzpause'}</div>
+        <div style={{color:'#64748b',fontSize:18}}>Wir sehen uns gleich wieder!</div>
+        {pauseUntil && (
+          <>
+            <div style={{position:'relative',width:sz,height:sz,marginTop:8}}>
+              <svg width={sz} height={sz} style={{transform:'rotate(-90deg)'}}>
+                <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke="#1e293b" strokeWidth="12"/>
+                <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke={isMittagspause?'#f97316':'#3b82f6'} strokeWidth="12"
+                  strokeDasharray={circ} strokeDashoffset={circ*pct}
+                  strokeLinecap="round" style={{transition:'stroke-dashoffset 1s linear',filter:`drop-shadow(0 0 8px ${isMittagspause?'#f97316':'#3b82f6'})`}}/>
+              </svg>
+              <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4}}>
+                <span style={{color:'#fff',fontSize:56,fontWeight:900,fontFamily:'monospace',lineHeight:1}}>
+                  {pauseMins>0?`${pauseMins}:${String(pauseSecOnly).padStart(2,'0')}`:pauseSecOnly}
+                </span>
+                <span style={{color:'#64748b',fontSize:14}}>{pauseMins>0?'Min':'Sek'}</span>
+              </div>
+            </div>
+            <div style={{color:'#475569',fontSize:16,display:'flex',alignItems:'center',gap:8}}>
+              <span>Weiter um</span>
+              <span style={{color:'#fff',fontWeight:700,fontSize:20,background:'#1e293b',padding:'4px 16px',borderRadius:8}}>{resumeTime} Uhr</span>
+            </div>
+          </>
+        )}
+        <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8,color:'#334155',fontSize:13}}>
+          <span style={{width:8,height:8,borderRadius:'50%',background:isMittagspause?'#f97316':'#3b82f6',display:'inline-block',animation:'pulse 2s infinite'}}></span>
+          Schulung wird automatisch fortgesetzt
+        </div>
+      </div>
+    );
+  }
+
   // Live-Folie (Fullscreen-Overlay wenn isFullscreen)
   if (isFullscreen) {
     return (
@@ -14851,12 +14966,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -14946,6 +15063,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
