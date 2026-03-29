@@ -265,7 +265,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.1.8';
+        const APP_VERSION = '6.1.9';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14382,7 +14382,7 @@ function TrainingAdmin({ supabase }) {
   }
 
   async function saveQuestion(q) {
-    // If this is an abschlusstest question (id starts with 'abs-'), update in memory only
+    // Abschlusstest question (in-memory only, id starts with 'abs-')
     if (q.id && String(q.id).startsWith('abs-')) {
       setAbschlussSlides(prev=>prev.map(sl=>
         sl.slideIndex===q.slide_index ? {...sl, questions:[q]} : sl
@@ -14391,18 +14391,23 @@ function TrainingAdmin({ supabase }) {
       setAbschlusstest(true);
       return;
     }
+    // Ensure presentation_id is set
+    const presId = q.presentation_id || quizView || abschlussPresId;
+    const payload = {
+      question: q.question,
+      options: q.options || ['','','',''],
+      correct_index: q.correct_index || 0,
+      slide_index: q.slide_index || 0,
+      presentation_id: presId
+    };
     if (q.id && q.id !== 'new') {
-      await supabase.from("training_questions").update({
-        question: q.question, options: q.options, correct_index: q.correct_index, slide_index: q.slide_index
-      }).eq("id", q.id);
+      await supabase.from("training_questions").update(payload).eq("id", q.id);
     } else {
-      await supabase.from("training_questions").insert({
-        presentation_id: q.presentation_id, slide_index: q.slide_index||0,
-        question: q.question, options: q.options, correct_index: q.correct_index
-      });
+      await supabase.from("training_questions").insert(payload);
     }
     setEditingQ(null);
     if (quizView) { loadQuestions(quizView); setView('questions'); }
+    else if (abschlussPresId) { loadQuestions(abschlussPresId); setView('list'); }
     else { setView('list'); }
   }
 
