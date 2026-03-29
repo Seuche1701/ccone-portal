@@ -226,7 +226,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.0.2';
+        const APP_VERSION = '6.0.3';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -1240,7 +1240,7 @@ function getOrCreateSheet(){
                     {view==='admin'&&<AdminDashboard currentUser={currentUser} appData={appData} updateData={updateData} refreshData={refreshData} onLogout={handleLogout} showNotification={showNotification} onSettings={()=>setView('setup')} onSwitchView={()=>setView('choose')} onOpenDashboard={()=>setView('live-dashboard')}/>}
                     {view==='hub'&&<UserHub currentUser={currentUser} appData={appData} onNavigate={navigateTo} onLogout={handleLogout} onSwitchToAdmin={['admin','teamleiter','standardbenutzer'].includes(currentUser?.role)?()=>setView('choose'):null}/>}
                     {view==='user'&&<UserDashboard currentUser={currentUser} appData={appData} addResult={addResult} updateData={updateData} refreshData={refreshData} refreshUnoGamesOnly={refreshUnoGamesOnly} refreshPokerGamesOnly={refreshPokerGamesOnly} onLogout={handleLogout} showNotification={showNotification} onNavigate={navigateTo} onSwitchToAdmin={['admin','teamleiter','standardbenutzer'].includes(currentUser?.role)?()=>setView('choose'):null}/>}
-                    {view==='user-training'&&<VNRTrainingCenter currentUser={currentUser} appData={appData} updateData={updateData} showNotification={showNotification} onLogout={handleLogout} onNavigate={navigateTo} refreshData={refreshData}/>}
+                    {view==='user-training'&&<TrainingHub currentUser={currentUser} appData={appData} updateData={updateData} showNotification={showNotification} onLogout={handleLogout} onNavigate={navigateTo} refreshData={refreshData} isAdmin={false} sbClient={getSbClient()}/>}
                     {view==='user-coaching'&&<UserCoachingView currentUser={currentUser} appData={appData} updateData={updateData} showNotification={showNotification} onLogout={handleLogout} onNavigate={navigateTo} refreshData={refreshData}/>}
                     {view==='live-dashboard'&&<LiveDashboard onBack={()=>setView('admin')} showNotification={showNotification} appData={appData} refreshData={refreshData} updateData={updateData}/>}
                     {/* === GLOBAL Pause/Message Popup === */}
@@ -14553,7 +14553,11 @@ function TrainingAgent({ supabase }) {
       <div className="flex flex-col items-center justify-center py-20 text-slate-500" style={{background:'#0a0f1a',minHeight:'100vh'}}>
         <div className="text-5xl mb-4">📺</div>
         <div className="text-base font-medium text-slate-400">Keine aktive Schulung</div>
-        <div className="text-sm mt-1">Der Trainer startet gleich die Präsentation.</div>
+        <div className="text-sm mt-1" style={{color:'#64748b',textAlign:'center',maxWidth:280}}>Sobald der Trainer eine Schulung startet, erscheint die Präsentation hier automatisch.</div>
+        <div className="flex items-center gap-2 mt-5 text-xs" style={{color:'#334155'}}>
+          <span style={{width:8,height:8,borderRadius:'50%',background:'#334155',display:'inline-block',animation:'pulse 2s infinite'}}></span>
+          Warte auf Schulung…
+        </div>
         <div className="flex items-center gap-2 mt-4 text-xs text-slate-600">
           <span className="w-2 h-2 rounded-full bg-slate-600 animate-pulse inline-block"></span>
           Warte auf Verbindung…
