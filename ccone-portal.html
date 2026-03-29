@@ -30,6 +30,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -232,6 +233,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -253,13 +255,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.1.6';
+        const APP_VERSION = '6.1.7';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -15471,6 +15474,11 @@ function TrainingAgent({ supabase }) {
     return () => clearInterval(t);
   }, [session?.pause_until]);
 
+  // Reset quiz answer when question changes
+  React.useEffect(() => {
+    setQuizAnswered(null);
+  }, [session?.quiz_question?.id]);
+
   function checkStartTime(sess) {
     if (!sess.start_time) { setIsLive(true); setCountdown(null); return; }
     const diff = Math.ceil((new Date(sess.start_time) - Date.now()) / 1000);
@@ -15546,9 +15554,6 @@ function TrainingAgent({ supabase }) {
     const answered = quizAnswered;
     const setAnswered = setQuizAnswered;
     const submitting = quizSubmitting === q.id;
-
-    // Reset when question changes
-    React.useEffect(() => { setQuizAnswered(null); }, [q.id]);
 
     const submitAnswer = async (idx) => {
       if (answered !== null || submitting) return;
@@ -15753,12 +15758,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -15855,6 +15862,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
