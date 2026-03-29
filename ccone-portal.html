@@ -223,7 +223,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.9.8';
+        const APP_VERSION = '5.9.9';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -242,7 +242,28 @@
         const SUPABASE_URL = 'https://jblgpzqwjpjscmkfsupf.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_KC_Y-rjIkpa0CTvtGc4p8Q_MqHC7SpQ';
         let _sbClient=null;
-        function getSbClient(){if(!_sbClient&&window.supabase){_sbClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);}return _sbClient;}
+        function loadSupabaseJs(){
+            return new Promise((resolve,reject)=>{
+                if(window.supabase){resolve(window.supabase);return;}
+                const s=document.createElement('script');
+                s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+                s.onload=()=>resolve(window.supabase);
+                s.onerror=()=>{
+                    // fallback: unpkg
+                    const s2=document.createElement('script');
+                    s2.src='https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+                    s2.onload=()=>resolve(window.supabase);
+                    s2.onerror=reject;
+                    document.head.appendChild(s2);
+                };
+                document.head.appendChild(s);
+            });
+        }
+        function getSbClient(){
+            if(_sbClient)return _sbClient;
+            if(window.supabase){_sbClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);return _sbClient;}
+            return null;
+        }
         const getBackendMode = () => {
             // URL-Notschalter: ?backend=google erzwingt Google Sheets
             const urlMode = new URLSearchParams(window.location.search).get('backend');
@@ -14526,8 +14547,18 @@ function TrainingCenter({ supabase, isAdmin }) {
 
 
         // TrainingHub: wrapper mit Sub-Tabs (Materialien + EKD Schulungen)
-        function TrainingHub({currentUser,appData,updateData,showNotification,onLogout,onNavigate,refreshData,isAdmin,sbClient}){
+        function TrainingHub({currentUser,appData,updateData,showNotification,onLogout,onNavigate,refreshData,isAdmin,sbClient:sbClientProp}){
             const [subTab,setSubTab]=React.useState('materialien');
+            const [sbClient,setSbClient]=React.useState(sbClientProp||getSbClient());
+            React.useEffect(()=>{
+                if(!sbClient){
+                    loadSupabaseJs().then(sb=>{
+                        const c=sb.createClient(SUPABASE_URL,SUPABASE_KEY);
+                        _sbClient=c;
+                        setSbClient(c);
+                    }).catch(e=>console.error('Supabase load failed:',e));
+                }
+            },[]);
             const tabs=[
                 {id:'materialien',label:'📚 Materialien'},
                 {id:'ekd-schulungen',label:'🎓 EKD Schulungen'},
