@@ -265,7 +265,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.2.1';
+        const APP_VERSION = '6.2.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14561,10 +14561,7 @@ function TrainingAdmin({ supabase }) {
     }).eq("id",sessionRef.current);
     setSession(prev=>({...prev,quiz_active:true,quiz_question:{id:q.id,question:q.question,options:q.options,correct_index:q.correct_index}}));
     setQuizAnswers([]); setAbschlussIdx(idx);
-    supabase.channel('abs-q-'+q.id)
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'training_quiz_answers'},
-        payload=>{setQuizAnswers(prev=>[...prev,payload.new]);setAllQuizAnswers(prev=>[...prev,payload.new]);})
-      .subscribe();
+    // No separate channel needed - global listener in useEffect handles all answers
   }
   async function startAbschlusstest(presId) {
     const saved = savedAbschluss[presId||abschlussPresId];
@@ -14587,10 +14584,6 @@ function TrainingAdmin({ supabase }) {
     }).eq("id", sessionRef.current);
     // Load answers
     setQuizAnswers([]);
-    supabase.channel('quiz-answers-' + q.id)
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'training_quiz_answers'},
-        payload=>{setQuizAnswers(prev=>[...prev,payload.new]);setAllQuizAnswers(prev=>[...prev,payload.new]);})
-      .subscribe();
     setQuizPicker(false);
   }
 
@@ -14599,6 +14592,7 @@ function TrainingAdmin({ supabase }) {
     await supabase.from("training_sessions").update({ quiz_active: false, quiz_question: null }).eq("id", sessionRef.current);
     setSession(prev=>({...prev, quiz_active:false, quiz_question:null}));
     setSelectedQuestions([]);
+    setQuizAnswers([]);
   }
 
   async function savePlaylist() {
