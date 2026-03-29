@@ -223,7 +223,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '5.9.9';
+        const APP_VERSION = '6.0.0';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14056,6 +14056,33 @@ function slideUrl(supabase, presId, index) {
   return data.publicUrl;
 }
 
+// Electron-safe image component: fetches via supabase client → blob URL
+function SlideImage({ supabase, presId, index, style, className, alt }) {
+  const [src, setSrc] = React.useState(null);
+  const [error, setError] = React.useState(false);
+  React.useEffect(() => {
+    let revoked = false;
+    setError(false);
+    setSrc(null);
+    const pad = String(index).padStart(2, "0");
+    const path = `${presId}/slide-${pad}.jpg`;
+    supabase.storage.from("training-slides").download(path)
+      .then(({ data, error }) => {
+        if (error || !data) { setError(true); return; }
+        const url = URL.createObjectURL(data);
+        if (!revoked) setSrc(url);
+      })
+      .catch(() => setError(true));
+    return () => {
+      revoked = true;
+      if (src) URL.revokeObjectURL(src);
+    };
+  }, [presId, index]);
+  if (error) return <div style={{...style, background:'#1e293b', display:'flex', alignItems:'center', justifyContent:'center', color:'#64748b', fontSize:11}}>Folie {index}</div>;
+  if (!src) return <div style={{...style, background:'#0f172a', display:'flex', alignItems:'center', justifyContent:'center'}}><div style={{width:20,height:20,border:'2px solid #f97316',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/></div>;
+  return <img src={src} alt={alt||`Folie ${index}`} style={style} className={className}/>;
+}
+
 function UploadView({ supabase, onDone }) {
   const [title, setTitle] = React.useState("");
   const [file, setFile] = React.useState(null);
@@ -14329,10 +14356,10 @@ function TrainingAdmin({ supabase }) {
             {presentations.map(pres => (
               <div key={pres.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center gap-4">
                 {}
-                <img
-                  src={slideUrl(supabase, pres.id, 1)}
-                  alt={pres.title}
+                <SlideImage
+                  supabase={supabase} presId={pres.id} index={1}
                   className="w-24 h-14 object-cover rounded-lg border border-slate-600 flex-shrink-0 bg-slate-900"
+                  style={{width:96,height:56,objectFit:"cover",borderRadius:8,flexShrink:0}}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-white font-semibold truncate">{pres.title}</div>
@@ -14380,12 +14407,10 @@ function TrainingAdmin({ supabase }) {
         {}
         <div className="flex-1 flex bg-black overflow-hidden">
           <div className="flex-1 flex items-center justify-center relative">
-            <img
-              key={`${selectedPres.id}-${currentSlide}`}
-              src={slideUrl(supabase, selectedPres.id, currentSlide)}
+            <SlideImage
+              supabase={supabase} presId={selectedPres.id} index={currentSlide}
               alt={`Folie ${currentSlide}`}
-              className="max-w-full max-h-full object-contain"
-              style={{ maxHeight: "calc(100vh - 200px)" }}
+              style={{maxWidth:"100%",maxHeight:"calc(100vh - 200px)",objectFit:"contain"}}
             />
             <div className="absolute bottom-3 right-4 bg-black/70 text-white text-sm px-3 py-1 rounded-full">
               {currentSlide} / {selectedPres.slide_count}
@@ -14406,12 +14431,10 @@ function TrainingAdmin({ supabase }) {
                     idx === currentSlide ? "border-orange-500 ring-1 ring-orange-500" : "border-slate-700 hover:border-slate-500"
                   }`}
                 >
-                  <img
-                    src={slideUrl(supabase, selectedPres.id, idx)}
+                  <SlideImage
+                    supabase={supabase} presId={selectedPres.id} index={idx}
                     alt={`Folie ${idx}`}
-                    className="w-full"
-                    style={{ aspectRatio: "16/9", objectFit: "cover" }}
-                    loading="lazy"
+                    style={{width:"100%",aspectRatio:"16/9",objectFit:"cover"}}
                   />
                   <div className={`px-1.5 py-0.5 bg-slate-800 text-xs text-left truncate ${idx === currentSlide ? "text-orange-400" : "text-slate-500"}`}>
                     {idx}
@@ -14520,14 +14543,10 @@ function TrainingAgent({ supabase }) {
             Folie {currentSlide} wird geladen…
           </div>
         ) : (
-          <img
-            key={`${pres.id}-${currentSlide}`}
-            src={slideUrl(supabase, pres.id, currentSlide)}
-            alt={`Folie ${currentSlide}`}
-            className="w-full"
-            style={{ aspectRatio: "16/9", objectFit: "contain" }}
-            onError={() => setImgError(true)}
-            onLoad={() => setImgError(false)}
+          <SlideImage
+            supabase={supabase} presId={pres.id} index={currentSlide}
+            alt={slideTitle}
+            style={{width:"100%",aspectRatio:"16/9",objectFit:"contain"}}
           />
         )}
       </div>
