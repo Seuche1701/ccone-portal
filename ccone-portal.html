@@ -10,11 +10,12 @@
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+
 
 
 
@@ -234,6 +235,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -256,13 +258,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.1.7';
+        const APP_VERSION = '6.1.8';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -3386,7 +3389,7 @@ function getOrCreateSheet(){
                         '    <script>\n    window.__FILE_SOURCE=null;\n    try{var x=new XMLHttpRequest();x.open("GET",location.href,false);x.send();if(x.responseText&&x.responseText.length>1000)window.__FILE_SOURCE=x.responseText;}catch(e){}\n    <\/script>\n'+
                         '    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"><\/script>\n'+
                         '    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"><\/script>\n'+
-                        '    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"><\/script>\n'+
+                        '    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"><\/script>\n'+
                         '    <script src="https://cdn.tailwindcss.com"><\/script>\n'+
                         '    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/script>\n'+
                         '    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">\n'+
@@ -14297,7 +14300,7 @@ function UploadView({ supabase, onDone }) {
 
 function TrainingAdmin({ supabase }) {
   const [presentations, setPresentations] = React.useState([]);
-  const [view, setView] = React.useState("list"); // list | upload | present
+  const [view, setView] = React.useState("list"); // list | upload | present | edit-question
   const [session, setSession] = React.useState(null);
   const [selectedPres, setSelectedPres] = React.useState(null);
   const [currentSlide, setCurrentSlide] = React.useState(1);
@@ -14326,6 +14329,20 @@ function TrainingAdmin({ supabase }) {
   const [quizPicker, setQuizPicker] = React.useState(false);
   const [selectedQuestions, setSelectedQuestions] = React.useState([]);
   const [quizAnswers, setQuizAnswers] = React.useState([]);
+  const [allQuizAnswers, setAllQuizAnswers] = React.useState([]);
+  const [showEvaluation, setShowEvaluation] = React.useState(false);
+  const [abschlusstest, setAbschlusstest] = React.useState(false);
+  const [playlistAbschluss, setPlaylistAbschluss] = React.useState(null); // playlist being prepared
+  const [abschlussPresId, setAbschlussPresId] = React.useState(null);
+  const [abschlussSlides, setAbschlussSlides] = React.useState([]);
+  const [abschlussTriggerSlide, setAbschlussTriggerSlide] = React.useState(null);
+  const [abschlussBusy, setAbschlussBusy] = React.useState(null);
+  const [abschlussQueue, setAbschlussQueue] = React.useState([]);
+  const [abschlussRunning, setAbschlussRunning] = React.useState(false);
+  const [abschlussIdx, setAbschlussIdx] = React.useState(0);
+  const [savedAbschluss, setSavedAbschluss] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('ccone_abschluss')||'{}'); } catch(e) { return {}; }
+  });
   const [formQ, setFormQ] = React.useState({presentation_id:'',slide_index:0,question:'',options:['','','',''],correct_index:0});
   const [showApiKey, setShowApiKey] = React.useState(false);
   const [apiKeyInput, setApiKeyInput] = React.useState('');
@@ -14365,6 +14382,15 @@ function TrainingAdmin({ supabase }) {
   }
 
   async function saveQuestion(q) {
+    // If this is an abschlusstest question (id starts with 'abs-'), update in memory only
+    if (q.id && String(q.id).startsWith('abs-')) {
+      setAbschlussSlides(prev=>prev.map(sl=>
+        sl.slideIndex===q.slide_index ? {...sl, questions:[q]} : sl
+      ));
+      setEditingQ(null);
+      setAbschlusstest(true);
+      return;
+    }
     if (q.id && q.id !== 'new') {
       await supabase.from("training_questions").update({
         question: q.question, options: q.options, correct_index: q.correct_index, slide_index: q.slide_index
@@ -14376,7 +14402,8 @@ function TrainingAdmin({ supabase }) {
       });
     }
     setEditingQ(null);
-    if (quizView) loadQuestions(quizView);
+    if (quizView) { loadQuestions(quizView); setView('questions'); }
+    else { setView('list'); }
   }
 
   async function deleteQuestion(id) {
@@ -14464,6 +14491,73 @@ function TrainingAdmin({ supabase }) {
     setSlideGenLoading(false);
   }
 
+  function openAbschlusstest(pres) {
+    const ex = savedAbschluss[pres.id];
+    if (ex) { setAbschlussSlides(ex.slides||[]); setAbschlussTriggerSlide(ex.triggerSlide||pres.slide_count); }
+    else { setAbschlussSlides(Array.from({length:pres.slide_count},(_,i)=>({slideIndex:i+1,mode:null,questions:[]}))); setAbschlussTriggerSlide(pres.slide_count); }
+    setAbschlussPresId(pres.id); setAbschlusstest(true);
+  }
+  function openPlaylistAbschlusstest(pl) {
+    setPlaylistAbschluss(pl);
+  }
+
+  function saveAbschlusstest() {
+    const updated = {...savedAbschluss,[abschlussPresId]:{slides:abschlussSlides,triggerSlide:abschlussTriggerSlide}};
+    setSavedAbschluss(updated); localStorage.setItem('ccone_abschluss',JSON.stringify(updated)); setAbschlusstest(false);
+  }
+  async function generateAbschlussSlideAI(slideIndex) {
+    const key = localStorage.getItem('groq-api-key')||'';
+    if (!key) { alert('Kein Groq API-Key'); return; }
+    setAbschlussBusy(slideIndex);
+    try {
+      const pad = String(slideIndex).padStart(2,'0');
+      const {data:blob,error} = await supabase.storage.from('training-slides').download(abschlussPresId+'/slide-'+pad+'.jpg');
+      if (error||!blob) throw new Error("Folie nicht ladbar");
+      const b64 = await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.readAsDataURL(blob);});
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions",{method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+        body:JSON.stringify({model:"meta-llama/llama-4-scout-17b-16e-instruct",max_tokens:500,
+          messages:[{role:"system",content:'Erstelle 1 Multiple-Choice-Frage auf Deutsch als JSON-Array: [{"question":"?","options":["A","B","C","D"],"correct_index":0}]. Nur das Array.'},
+            {role:"user",content:[{type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},{type:"text",text:"1 Quizfrage fuer Folie "+slideIndex}]}]})});
+      const result = await resp.json();
+      const text = (result.choices||[])[0]?.message?.content||'';
+      const s=text.indexOf('['),e=text.lastIndexOf(']');
+      if(s===-1) throw new Error("Kein JSON");
+      const qs = JSON.parse(text.substring(s,e+1));
+      const q = {...qs[0],slide_index:slideIndex,id:'abs-'+slideIndex+'-'+Date.now()};
+      setAbschlussSlides(prev=>prev.map(sl=>sl.slideIndex===slideIndex?{...sl,mode:'ki',questions:[q]}:sl));
+    } catch(e) { alert("KI Fehler: "+e.message); }
+    setAbschlussBusy(null);
+  }
+  async function sendNextAbschlussQuestion(queue, idx) {
+    if (idx >= queue.length) {
+      await supabase.from("training_sessions").update({quiz_active:false,quiz_question:null}).eq("id",sessionRef.current);
+      setSession(prev=>({...prev,quiz_active:false,quiz_question:null}));
+      setAbschlussRunning(false); return;
+    }
+    const q = queue[idx];
+    await supabase.from("training_sessions").update({quiz_active:true,
+      quiz_question:{id:q.id,question:q.question,options:q.options,correct_index:q.correct_index}
+    }).eq("id",sessionRef.current);
+    setSession(prev=>({...prev,quiz_active:true,quiz_question:{id:q.id,question:q.question,options:q.options,correct_index:q.correct_index}}));
+    setQuizAnswers([]); setAbschlussIdx(idx);
+    supabase.channel('abs-q-'+q.id)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'training_quiz_answers'},
+        payload=>{setQuizAnswers(prev=>[...prev,payload.new]);setAllQuizAnswers(prev=>[...prev,payload.new]);})
+      .subscribe();
+  }
+  async function startAbschlusstest(presId) {
+    const saved = savedAbschluss[presId||abschlussPresId];
+    const slides = saved?.slides || abschlussSlides;
+    const queue = slides.flatMap(sl=>(sl.questions||[])).filter(q=>q?.question);
+    if (!queue.length) return;
+    setAbschlussQueue(queue); setAbschlussRunning(true); setAbschlusstest(false);
+    await sendNextAbschlussQuestion(queue, 0);
+  }
+  async function nextAbschlussQuestion() {
+    await sendNextAbschlussQuestion(abschlussQueue, abschlussIdx+1);
+  }
+
   async function triggerQuiz(qs) {
     if (!sessionRef.current || !qs.length) return;
     const q = qs[0];
@@ -14473,9 +14567,9 @@ function TrainingAdmin({ supabase }) {
     }).eq("id", sessionRef.current);
     // Load answers
     setQuizAnswers([]);
-    const ch = supabase.channel('quiz-answers-' + q.id)
+    supabase.channel('quiz-answers-' + q.id)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'training_quiz_answers'},
-        payload => setQuizAnswers(prev=>[...prev, payload.new]))
+        payload=>{setQuizAnswers(prev=>[...prev,payload.new]);setAllQuizAnswers(prev=>[...prev,payload.new]);})
       .subscribe();
     setQuizPicker(false);
   }
@@ -14591,12 +14685,15 @@ function TrainingAdmin({ supabase }) {
   }
 
   async function stopSession() {
-    if (!sessionRef.current) return;
-    await supabase.from("training_sessions").update({ active: false, pause_type: null, pause_until: null }).eq("id", sessionRef.current);
-    setSession(null);
-    sessionRef.current = null;
-    setIsPaused(false);
-    setView("list");
+    const id = sessionRef.current;
+    if (!id) return;
+    await supabase.from("training_sessions").update({ active: false, pause_type: null, pause_until: null }).eq("id", id);
+    const {data: saved} = await supabase.from("training_quiz_answers").select("*").eq("session_id", id);
+    const answers = saved?.length ? saved : allQuizAnswers;
+    setSession(null); sessionRef.current = null; setIsPaused(false);
+    setAllQuizAnswers(answers);
+    if (answers.length > 0) { setShowEvaluation(true); }
+    else { setView("list"); }
   }
 
   async function startPause(type, mins) {
@@ -14641,6 +14738,193 @@ function TrainingAdmin({ supabase }) {
     }
     setDeleting(null);
     loadPresentations();
+  }
+
+  // ── Playlist Abschlusstest Übersicht ────────────────────────────────────────
+  if (playlistAbschluss) {
+    const pl = playlistAbschluss;
+    const totalQ = pl.presentations.reduce((sum, item) => {
+      const saved = savedAbschluss[item.presId];
+      return sum + (saved?.slides||[]).reduce((s,sl)=>s+(sl.questions?.length||0),0);
+    }, 0);
+    return (
+      <div style={{background:'#0a0f1a',minHeight:'100vh',padding:20}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <button onClick={()=>setPlaylistAbschluss(null)} style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
+            <span style={{color:'#fff',fontWeight:800,fontSize:16}}>🎓 Playlist-Test: {pl.title}</span>
+          </div>
+          {totalQ>0&&<div style={{color:'#86efac',fontSize:13,fontWeight:600}}>{totalQ} Fragen bereit</div>}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {pl.presentations.map((item,i) => {
+            const pres = presentations.find(p=>p.id===item.presId);
+            const saved = savedAbschluss[item.presId];
+            const qCount = (saved?.slides||[]).reduce((s,sl)=>s+(sl.questions?.length||0),0);
+            const triggerSlide = saved?.triggerSlide || pres?.slide_count || 1;
+            return (
+              <div key={i} style={{background:'#1e293b',border:'2px solid '+(qCount?'rgba(34,197,94,0.4)':'#334155'),borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:14}}>
+                <SlideImage supabase={supabase} presId={item.presId} index={1}
+                  style={{width:80,height:45,objectFit:'cover',borderRadius:7,flexShrink:0,background:'#0f172a'}}/>
+                <div style={{flex:1}}>
+                  <div style={{color:'#fff',fontWeight:700,fontSize:14}}>{item.title}</div>
+                  <div style={{color:'#64748b',fontSize:12,marginTop:2}}>
+                    {qCount>0
+                      ? <span style={{color:'#86efac'}}>✓ {qCount} Fragen · ab Folie {triggerSlide}</span>
+                      : <span style={{color:'#f97316'}}>Noch kein Abschlusstest erstellt</span>}
+                  </div>
+                </div>
+                <div style={{display:'flex',gap:6,flexShrink:0}}>
+                  {pres&&<button onClick={()=>{setPlaylistAbschluss(null);openAbschlusstest(pres);}}
+                    style={{background:'rgba(249,115,22,0.15)',color:'#f97316',border:'1px solid rgba(249,115,22,0.3)',borderRadius:7,padding:'6px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                    {qCount>0?'✏️ Bearbeiten':'➕ Erstellen'}
+                  </button>}
+                  {pres&&<button onClick={()=>{setPlaylistAbschluss(null);setQuizView(pres.id);loadQuestions(pres.id);setView("questions");}}
+                    style={{background:'rgba(124,58,237,0.15)',color:'#c4b5fd',border:'1px solid rgba(124,58,237,0.3)',borderRadius:7,padding:'6px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>❓</button>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{marginTop:16,padding:'12px 16px',background:'rgba(34,197,94,0.05)',border:'1px solid rgba(34,197,94,0.2)',borderRadius:10,color:'#64748b',fontSize:12}}>
+          💡 Der Abschlusstest startet automatisch im Presenter wenn du die festgelegte Folie erreichst. Erstelle für jede Schulung einen Test und lege die Startfolie fest.
+        </div>
+      </div>
+    );
+  }
+
+  // ── Abschlusstest Builder ──────────────────────────────────────────────────
+  if (abschlusstest && abschlussPresId) {
+    const absPres = presentations.find(p=>p.id===abschlussPresId);
+    const totalQ = abschlussSlides.reduce((s,sl)=>s+sl.questions.length,0);
+    return (
+      <div style={{background:'#0a0f1a',minHeight:'100vh',padding:20}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <button onClick={()=>setAbschlusstest(false)} style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
+            <span style={{color:'#fff',fontWeight:800,fontSize:16}}>🎓 Abschlusstest: {absPres?.title}</span>
+          </div>
+          <button onClick={saveAbschlusstest} disabled={totalQ===0}
+            style={{background:totalQ?'linear-gradient(135deg,#22c55e,#16a34a)':'rgba(255,255,255,0.05)',color:totalQ?'#fff':'#475569',border:'none',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13,cursor:totalQ?'pointer':'not-allowed'}}>
+            💾 Speichern ({totalQ} Fragen)
+          </button>
+        </div>
+        <div style={{background:'#1e293b',border:'1px solid #334155',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:12}}>
+          <span style={{color:'#94a3b8',fontSize:13}}>🔓 Test freischalten ab Folie:</span>
+          <input type="number" min="1" max={absPres?.slide_count||100} value={abschlussTriggerSlide||1}
+            onChange={e=>setAbschlussTriggerSlide(Number(e.target.value))}
+            style={{width:70,background:'#0f172a',border:'1px solid #334155',borderRadius:7,color:'#f97316',padding:'5px 10px',fontSize:14,fontWeight:700,textAlign:'center'}}/>
+          <span style={{color:'#64748b',fontSize:12}}>von {absPres?.slide_count} Folien</span>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10}}>
+          {abschlussSlides.map(sl=>{
+            const busy=abschlussBusy===sl.slideIndex;
+            const hasQ=sl.questions.length>0;
+            return (
+              <div key={sl.slideIndex} style={{background:'#1e293b',border:'2px solid '+(hasQ?'rgba(34,197,94,0.5)':'#334155'),borderRadius:12,overflow:'hidden'}}>
+                <div style={{position:'relative'}}>
+                  <SlideImage supabase={supabase} presId={abschlussPresId} index={sl.slideIndex} style={{width:'100%',aspectRatio:'16/9',objectFit:'cover',display:'block'}}/>
+                  {hasQ&&<div style={{position:'absolute',top:4,right:4,background:'rgba(34,197,94,0.9)',borderRadius:4,padding:'1px 6px',color:'#fff',fontSize:10,fontWeight:700}}>✓</div>}
+                  {busy&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',color:'#a78bfa',fontSize:11}}>KI lädt…</div>}
+                </div>
+                <div style={{padding:'7px 8px'}}>
+                  <div style={{color:'#64748b',fontSize:11,marginBottom:5}}>Folie {sl.slideIndex}</div>
+                  {hasQ?(
+                    <div>
+                      <div style={{color:'#86efac',fontSize:10,marginBottom:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sl.questions[0].question}</div>
+                      <div style={{display:'flex',gap:3}}>
+                        <button onClick={()=>{setFormQ({...sl.questions[0]});setEditingQ(sl.questions[0]);setAbschlusstest(false);setView('edit-question');}}
+                          style={{flex:1,background:'rgba(249,115,22,0.1)',color:'#f97316',border:'1px solid rgba(249,115,22,0.3)',borderRadius:5,padding:'3px',fontSize:10,fontWeight:700,cursor:'pointer'}}>✏️</button>
+                        <button onClick={()=>setAbschlussSlides(prev=>prev.map(s=>s.slideIndex===sl.slideIndex?{...s,questions:[],mode:null}:s))}
+                          style={{flex:1,background:'rgba(239,68,68,0.1)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.2)',borderRadius:5,padding:'3px',fontSize:10,cursor:'pointer'}}>🗑</button>
+                      </div>
+                    </div>
+                  ):(
+                    <div style={{display:'flex',gap:4}}>
+                      <button onClick={()=>generateAbschlussSlideAI(sl.slideIndex)} disabled={busy}
+                        style={{flex:1,background:'rgba(124,58,237,0.15)',color:'#c4b5fd',border:'1px solid rgba(124,58,237,0.3)',borderRadius:5,padding:'4px',fontSize:11,fontWeight:700,cursor:'pointer'}}>✨ KI</button>
+                      <button onClick={()=>{setFormQ({presentation_id:abschlussPresId,slide_index:sl.slideIndex,question:'',options:['','','',''],correct_index:0});setEditingQ('new');setAbschlusstest(false);setQuizView(abschlussPresId);loadQuestions(abschlussPresId);setView('edit-question');}}
+                        style={{flex:1,background:'rgba(249,115,22,0.1)',color:'#f97316',border:'1px solid rgba(249,115,22,0.3)',borderRadius:5,padding:'4px',fontSize:11,fontWeight:700,cursor:'pointer'}}>✍️ Manuell</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Evaluation View ──────────────────────────────────────────────────────────
+  if (showEvaluation) {
+    const presTitle = selectedPres?.title||'Schulung';
+    const byQ = {};
+    allQuizAnswers.forEach(a=>{if(!byQ[a.question_id])byQ[a.question_id]=[];byQ[a.question_id].push(a);});
+    const total = allQuizAnswers.length;
+    const correct = allQuizAnswers.filter(a=>a.is_correct).length;
+    const pct = total?Math.round(correct/total*100):0;
+    return (
+      <div style={{background:'#0a0f1a',minHeight:'100vh',padding:20}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+          <div>
+            <div style={{color:'#fff',fontWeight:800,fontSize:18}}>📊 Auswertung: {presTitle}</div>
+            <div style={{color:'#475569',fontSize:12,marginTop:2}}>Antworten dauerhaft in Supabase gespeichert</div>
+          </div>
+          <button onClick={()=>{setShowEvaluation(false);setAllQuizAnswers([]);setView("list");}}
+            style={{background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',border:'none',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13,cursor:'pointer'}}>Fertig</button>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
+          {[{label:'Antworten',value:total,color:'#a78bfa'},{label:'Richtig',value:correct,color:'#86efac'},{label:'Quote',value:pct+'%',color:pct>=70?'#86efac':pct>=40?'#fbbf24':'#fca5a5'}].map(s=>(
+            <div key={s.label} style={{background:'#1e293b',border:'1px solid #334155',borderRadius:12,padding:'14px',textAlign:'center'}}>
+              <div style={{color:s.color,fontWeight:900,fontSize:28}}>{s.value}</div>
+              <div style={{color:'#64748b',fontSize:12,marginTop:2}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+        {Object.keys(byQ).length===0?<div style={{textAlign:'center',padding:'40px',color:'#475569'}}>Keine Antworten</div>:
+          Object.entries(byQ).map(([qid,answers])=>{
+            const correctQ=answers.filter(a=>a.is_correct).length;
+            const optCounts={};
+            answers.forEach(a=>{optCounts[a.answer_index]=(optCounts[a.answer_index]||0)+1;});
+            return (
+              <div key={qid} style={{background:'#1e293b',border:'1px solid #334155',borderRadius:12,padding:'16px',marginBottom:12}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}>
+                  <div style={{color:'#e2e8f0',fontWeight:700,fontSize:14}}>Frage</div>
+                  <span style={{background:correctQ/answers.length>=0.7?'rgba(34,197,94,0.2)':'rgba(239,68,68,0.2)',border:'1px solid '+(correctQ/answers.length>=0.7?'rgba(34,197,94,0.4)':'rgba(239,68,68,0.4)'),borderRadius:6,padding:'2px 10px',color:correctQ/answers.length>=0.7?'#86efac':'#fca5a5',fontSize:12,fontWeight:700}}>
+                    {correctQ}/{answers.length} ({Math.round(correctQ/answers.length*100)}%)
+                  </span>
+                </div>
+                {Object.entries(optCounts).sort((a,b)=>Number(a[0])-Number(b[0])).map(([idx,cnt])=>{
+                  const isCorrect=answers.find(a=>a.answer_index===Number(idx)&&a.is_correct);
+                  const bar=Math.round(cnt/answers.length*100);
+                  return (
+                    <div key={idx} style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                      <span style={{width:22,height:22,borderRadius:'50%',background:isCorrect?'rgba(34,197,94,0.2)':'rgba(239,68,68,0.1)',border:'1px solid '+(isCorrect?'#22c55e':'#ef4444'),display:'flex',alignItems:'center',justifyContent:'center',color:isCorrect?'#86efac':'#fca5a5',fontSize:10,fontWeight:700,flexShrink:0}}>
+                        {String.fromCharCode(65+Number(idx))}
+                      </span>
+                      <div style={{flex:1,background:'#0f172a',borderRadius:3,height:18,overflow:'hidden'}}>
+                        <div style={{width:bar+'%',height:'100%',background:isCorrect?'rgba(34,197,94,0.4)':'rgba(239,68,68,0.3)',display:'flex',alignItems:'center',paddingLeft:6,color:'#fff',fontSize:10,minWidth:bar>0?24:0}}>
+                          {bar>0?bar+'%':''}
+                        </div>
+                      </div>
+                      <span style={{color:'#64748b',fontSize:11,width:28,textAlign:'right'}}>{cnt}x</span>
+                    </div>
+                  );
+                })}
+                <div style={{marginTop:8,display:'flex',flexWrap:'wrap',gap:4}}>
+                  {answers.map((a,i)=>(
+                    <span key={i} style={{background:a.is_correct?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)',border:'1px solid '+(a.is_correct?'rgba(34,197,94,0.3)':'rgba(239,68,68,0.3)'),borderRadius:4,padding:'1px 7px',fontSize:11,color:a.is_correct?'#86efac':'#fca5a5'}}>
+                      {a.user_name||'Agent'}: {String.fromCharCode(65+(a.answer_index||0))} {a.is_correct?'✓':'✗'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        }
+      </div>
+    );
   }
 
   if (view === "list") {
@@ -14783,6 +15067,10 @@ function TrainingAdmin({ supabase }) {
                     style={{background:'rgba(124,58,237,0.15)',color:'#c4b5fd',border:'1px solid rgba(124,58,237,0.3)',borderRadius:8,padding:'6px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
                     ❓
                   </button>
+                  <button onClick={()=>openAbschlusstest(pres)}
+                    style={{background:savedAbschluss[pres.id]?'rgba(249,115,22,0.2)':'rgba(255,255,255,0.04)',color:savedAbschluss[pres.id]?'#f97316':'#64748b',border:'1px solid '+(savedAbschluss[pres.id]?'rgba(249,115,22,0.4)':'#334155'),borderRadius:8,padding:'6px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                    🎓
+                  </button>
                   {startTimePicker === pres.id ? (
                     <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end'}}>
                       <div style={{display:'flex',gap:6,alignItems:'center'}}>
@@ -14873,11 +15161,22 @@ function TrainingAdmin({ supabase }) {
                         <div style={{color:'#fff',fontWeight:700,fontSize:14}}>{pl.title}</div>
                         <div style={{color:'#64748b',fontSize:12,marginTop:2}}>{pl.presentations.length} Schulungen · {totalSlides} Folien gesamt</div>
                         <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:6}}>
-                          {pl.presentations.map((item,i)=>(
-                            <span key={i} style={{background:'rgba(249,115,22,0.1)',border:'1px solid rgba(249,115,22,0.2)',borderRadius:4,padding:'1px 7px',fontSize:11,color:'#f97316',fontWeight:600}}>
-                              {i+1}. {item.title}
-                            </span>
-                          ))}
+                          {pl.presentations.map((item,i)=>{
+                            const pres = presentations.find(p=>p.id===item.presId);
+                            const hasAbschluss = !!savedAbschluss[item.presId];
+                            const qCount = hasAbschluss ? (savedAbschluss[item.presId].slides||[]).reduce((s,sl)=>s+(sl.questions?.length||0),0) : 0;
+                            return (
+                              <div key={i} style={{display:'flex',alignItems:'center',gap:3,background:'rgba(249,115,22,0.08)',border:'1px solid rgba(249,115,22,0.2)',borderRadius:6,padding:'2px 4px 2px 6px'}}>
+                                <span style={{fontSize:11,color:'#f97316',fontWeight:600}}>{i+1}. {item.title}</span>
+                                <button onClick={()=>{if(pres){setQuizView(pres.id);loadQuestions(pres.id);setView("questions");}}}
+                                  title="Fragen" style={{background:'rgba(124,58,237,0.2)',color:'#c4b5fd',border:'none',borderRadius:4,padding:'1px 5px',fontSize:10,cursor:'pointer'}}>❓</button>
+                                <button onClick={()=>{if(pres) openAbschlusstest(pres);}}
+                                  title="Abschlusstest" style={{background:hasAbschluss?'rgba(249,115,22,0.25)':'rgba(255,255,255,0.06)',color:hasAbschluss?'#f97316':'#64748b',border:'none',borderRadius:4,padding:'1px 5px',fontSize:10,cursor:'pointer'}}>
+                                  🎓{hasAbschluss?' '+qCount:''}
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                       <div style={{display:'flex',flexDirection:'column',gap:6,flexShrink:0}}>
@@ -14907,6 +15206,10 @@ function TrainingAdmin({ supabase }) {
                           style={{background:'rgba(255,255,255,0.04)',color:'#94a3b8',border:'1px solid #334155',borderRadius:7,padding:'5px 12px',fontSize:12,cursor:'pointer'}}>
                           ✏️ Bearbeiten
                         </button>
+                        <button onClick={()=>openPlaylistAbschlusstest(pl)}
+                          style={{background:'rgba(249,115,22,0.1)',color:'#f97316',border:'1px solid rgba(249,115,22,0.3)',borderRadius:7,padding:'5px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                          🎓 Playlist-Test
+                        </button>
                         <button onClick={()=>deletePlaylist(pl)}
                           style={{background:'rgba(239,68,68,0.08)',color:'#f87171',border:'1px solid rgba(239,68,68,0.2)',borderRadius:7,padding:'5px 12px',fontSize:12,cursor:'pointer'}}>
                           🗑 Löschen
@@ -14924,10 +15227,63 @@ function TrainingAdmin({ supabase }) {
   }
 
   // ── Quiz Questions View ────────────────────────────────────────────────────
+  // ── Edit Question View ─────────────────────────────────────────────────────
+  if (view === "edit-question") {
+    const isNew = editingQ === 'new' || !editingQ?.id;
+    const backView = quizView ? 'questions' : 'list';
+    return (
+      <div style={{background:'#0a0f1a',minHeight:'100vh',padding:20,maxWidth:600,margin:'0 auto'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:24}}>
+          <button onClick={()=>{setEditingQ(null);setView(backView);}} style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
+          <span style={{color:'#fff',fontWeight:700,fontSize:16}}>{isNew?'➕ Neue Frage':'✏️ Frage bearbeiten'}</span>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+          <div>
+            <label style={{color:'#94a3b8',fontSize:12,fontWeight:600,display:'block',marginBottom:6}}>FOLIE (0 = allgemein)</label>
+            <input type="number" min="0" max="999" value={formQ.slide_index}
+              onChange={e=>setFormQ(prev=>({...prev,slide_index:Number(e.target.value)}))}
+              style={{background:'#1e293b',border:'1px solid #334155',borderRadius:8,color:'#fff',padding:'10px 14px',fontSize:14,width:'100px',boxSizing:'border-box'}}/>
+          </div>
+          <div>
+            <label style={{color:'#94a3b8',fontSize:12,fontWeight:600,display:'block',marginBottom:6}}>FRAGE</label>
+            <textarea rows={4} value={formQ.question}
+              onChange={e=>setFormQ(prev=>({...prev,question:e.target.value}))}
+              style={{background:'#1e293b',border:'1px solid #334155',borderRadius:8,color:'#fff',padding:'10px 14px',fontSize:14,width:'100%',boxSizing:'border-box',resize:'vertical'}}/>
+          </div>
+          <div>
+            <label style={{color:'#94a3b8',fontSize:12,fontWeight:600,display:'block',marginBottom:8}}>ANTWORTEN — Grüner Kreis = Richtige Antwort</label>
+            {(formQ.options||['','','','']).map((opt,i)=>(
+              <div key={i} style={{display:'flex',gap:10,marginBottom:10,alignItems:'center'}}>
+                <button onClick={()=>setFormQ(prev=>({...prev,correct_index:i}))}
+                  style={{width:36,height:36,borderRadius:'50%',border:'3px solid '+(formQ.correct_index===i?'#22c55e':'#334155'),
+                    background:formQ.correct_index===i?'rgba(34,197,94,0.25)':'transparent',cursor:'pointer',flexShrink:0,
+                    color:formQ.correct_index===i?'#22c55e':'#475569',fontWeight:900,fontSize:14}}>
+                  {String.fromCharCode(65+i)}
+                </button>
+                <input value={opt}
+                  onChange={e=>setFormQ(prev=>{const o=[...prev.options];o[i]=e.target.value;return{...prev,options:o};})}
+                  placeholder={'Antwort '+String.fromCharCode(65+i)}
+                  style={{flex:1,background:'#1e293b',border:'2px solid '+(formQ.correct_index===i?'#22c55e':'#334155'),
+                    borderRadius:9,color:'#fff',padding:'10px 14px',fontSize:14}}/>
+              </div>
+            ))}
+          </div>
+          <button onClick={()=>saveQuestion(formQ)} disabled={!formQ.question?.trim()}
+            style={{background:formQ.question?.trim()?'linear-gradient(135deg,#f97316,#ea580c)':'rgba(255,255,255,0.05)',
+              color:formQ.question?.trim()?'#fff':'#475569',border:'none',borderRadius:10,padding:'14px',fontWeight:800,fontSize:16,cursor:formQ.question?.trim()?'pointer':'not-allowed'}}>
+            💾 Speichern
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (view === "questions" && quizView) {
     const qPres = presentations.find(p=>p.id===quizView);
     const slideGroups = {};
     questions.forEach(q=>{ if(!slideGroups[q.slide_index]) slideGroups[q.slide_index]=[]; slideGroups[q.slide_index].push(q); });
+
+
 
     // ── Folie-Modal ──────────────────────────────────────────────────────────
     if (slideModal) {
@@ -14961,7 +15317,7 @@ function TrainingAdmin({ supabase }) {
                     </div>
                   </div>
                   <div style={{display:'flex',gap:3,flexShrink:0}}>
-                    <button onClick={()=>{setFormQ({...q});setEditingQ(q);setSlideModal(null);}}
+                    <button onClick={()=>{setFormQ({...q});setEditingQ(q);setSlideModal(null);setSlideModalMode(null);setView('edit-question');}}
                       style={{background:'rgba(255,255,255,0.05)',color:'#94a3b8',border:'1px solid #334155',borderRadius:5,padding:'3px 8px',fontSize:11,cursor:'pointer'}}>✏️</button>
                     <button onClick={()=>deleteQuestion(q.id)}
                       style={{background:'rgba(239,68,68,0.08)',color:'#f87171',border:'1px solid rgba(239,68,68,0.2)',borderRadius:5,padding:'3px 8px',fontSize:11,cursor:'pointer'}}>🗑</button>
@@ -14972,7 +15328,7 @@ function TrainingAdmin({ supabase }) {
           )}
           {!slideModalMode&&(
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-              <button onClick={()=>{setFormQ({presentation_id:quizView,slide_index:slideModal.slideIndex,question:'',options:['','','',''],correct_index:0});setEditingQ('new');setSlideModal(null);}}
+              <button onClick={()=>{setFormQ({presentation_id:quizView,slide_index:slideModal.slideIndex,question:'',options:['','','',''],correct_index:0});setEditingQ('new');setSlideModal(null);setView('edit-question');}}
                 style={{background:'rgba(249,115,22,0.12)',border:'2px solid rgba(249,115,22,0.3)',borderRadius:12,padding:'18px 12px',color:'#f97316',fontWeight:700,fontSize:14,cursor:'pointer',textAlign:'center'}}>
                 ✍️<br/><span style={{fontSize:12,fontWeight:600,marginTop:4,display:'block'}}>Manuell erstellen</span>
               </button>
@@ -15003,58 +15359,6 @@ function TrainingAdmin({ supabase }) {
       );
     }
 
-    if (editingQ) {
-      const isNew = editingQ === 'new' || !editingQ.id;
-      return (
-        <div style={{background:'#0a0f1a',minHeight:'100vh',padding:20,maxWidth:600,margin:'0 auto'}}>
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
-            <button onClick={()=>setEditingQ(null)} style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
-            <span style={{color:'#fff',fontWeight:700,fontSize:15}}>{isNew?'Neue Frage':'Frage bearbeiten'}</span>
-          </div>
-          <div style={{display:'flex',flexDirection:'column',gap:12}}>
-            <div>
-              <label style={{color:'#94a3b8',fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>FOLIE (0 = allgemein)</label>
-              <input type="number" min="0" max={qPres?.slide_count||100} value={formQ.slide_index}
-                onChange={e=>setFormQ({...formQ,slide_index:Number(e.target.value)})}
-                style={{background:'#1e293b',border:'1px solid #334155',borderRadius:8,color:'#fff',padding:'8px 12px',fontSize:13,width:'100%',boxSizing:'border-box'}}/>
-            </div>
-            <div>
-              <label style={{color:'#94a3b8',fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>FRAGE</label>
-              <textarea value={formQ.question} onChange={e=>setFormQ({...formQ,question:e.target.value})} rows={3}
-                style={{background:'#1e293b',border:'1px solid #334155',borderRadius:8,color:'#fff',padding:'8px 12px',fontSize:13,width:'100%',boxSizing:'border-box',resize:'vertical'}}/>
-            </div>
-            <div>
-              <label style={{color:'#94a3b8',fontSize:12,fontWeight:600,display:'block',marginBottom:6}}>ANTWORTEN (grün = richtig)</label>
-              {formQ.options.map((opt,i)=>(
-                <div key={i} style={{display:'flex',gap:8,marginBottom:6,alignItems:'center'}}>
-                  <button onClick={()=>setFormQ({...formQ,correct_index:i})}
-                    style={{width:28,height:28,borderRadius:'50%',border:'2px solid '+(formQ.correct_index===i?'#22c55e':'#334155'),
-                      background:formQ.correct_index===i?'rgba(34,197,94,0.2)':'transparent',cursor:'pointer',flexShrink:0,
-                      color:formQ.correct_index===i?'#22c55e':'#475569',fontWeight:700,fontSize:12}}>
-                    {String.fromCharCode(65+i)}
-                  </button>
-                  <input value={opt} onChange={e=>{const o=[...formQ.options];o[i]=e.target.value;setFormQ({...formQ,options:o});}}
-                    placeholder={`Antwort ${String.fromCharCode(65+i)}`}
-                    style={{flex:1,background:'#1e293b',border:'1px solid '+(formQ.correct_index===i?'rgba(34,197,94,0.4)':'#334155'),
-                      borderRadius:7,color:'#fff',padding:'7px 10px',fontSize:13}}/>
-                </div>
-              ))}
-            </div>
-            <div style={{display:'flex',gap:8,marginTop:8}}>
-              <button onClick={()=>saveQuestion(formQ)} disabled={!formQ.question.trim()}
-                style={{flex:1,background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',border:'none',borderRadius:8,padding:'10px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
-                💾 Speichern
-              </button>
-              <button onClick={()=>setEditingQ(null)}
-                style={{padding:'10px 16px',background:'rgba(255,255,255,0.05)',color:'#94a3b8',border:'1px solid #334155',borderRadius:8,cursor:'pointer'}}>
-                Abbrechen
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div style={{background:'#0a0f1a',minHeight:'100vh',padding:20}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
@@ -15064,7 +15368,7 @@ function TrainingAdmin({ supabase }) {
             <span style={{color:'#64748b',fontSize:12}}>{questions.length} Fragen</span>
           </div>
           <div style={{display:'flex',gap:8}}>
-            <button onClick={()=>{setFormQ({presentation_id:quizView,slide_index:0,question:'',options:['','','',''],correct_index:0});setEditingQ('new');}}
+            <button onClick={()=>{setFormQ({presentation_id:quizView,slide_index:0,question:'',options:['','','',''],correct_index:0});setEditingQ('new');setView('edit-question');}}
               style={{background:'rgba(249,115,22,0.15)',color:'#f97316',border:'1px solid rgba(249,115,22,0.3)',borderRadius:8,padding:'6px 14px',fontSize:13,fontWeight:700,cursor:'pointer'}}>
               + Frage hinzufügen
             </button>
@@ -15401,6 +15705,18 @@ function TrainingAdmin({ supabase }) {
                 style={{background:'rgba(124,58,237,0.15)',color:'#c4b5fd',border:'1px solid rgba(124,58,237,0.4)',borderRadius:8,padding:'8px 12px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
                 ❓ Auffrischung
               </button>
+              {savedAbschluss[selectedPres?.id]&&currentSlide>=(savedAbschluss[selectedPres?.id]?.triggerSlide||selectedPres?.slide_count)&&!abschlussRunning&&(
+                <button onClick={()=>startAbschlusstest(selectedPres.id)}
+                  style={{background:'linear-gradient(135deg,rgba(249,115,22,0.3),rgba(234,88,12,0.3))',color:'#f97316',border:'1.5px solid rgba(249,115,22,0.5)',borderRadius:8,padding:'8px 12px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                  🎓 Abschlusstest ({(savedAbschluss[selectedPres.id].slides||[]).reduce((s,sl)=>s+(sl.questions?.length||0),0)} Fragen)
+                </button>
+              )}
+              {abschlussRunning&&(
+                <button onClick={nextAbschlussQuestion}
+                  style={{background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',border:'none',borderRadius:8,padding:'8px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                  ⏭ Nächste Frage ({abschlussIdx+1}/{abschlussQueue.length})
+                </button>
+              )}
             </>
           )}
           <button onClick={stopSession}
@@ -15759,12 +16075,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -15862,6 +16180,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
