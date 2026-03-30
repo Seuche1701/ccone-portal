@@ -236,6 +236,21 @@
     
     
     
+    .slide-fade-enter { animation: slideFadeIn 0.4s ease forwards; }
+    .slide-slide-left-enter { animation: slideFromRight 0.35s ease forwards; }
+    .slide-slide-right-enter { animation: slideFromLeft 0.35s ease forwards; }
+    .slide-zoom-in-enter { animation: slideZoomIn 0.35s ease forwards; }
+    .slide-zoom-out-enter { animation: slideZoomOut 0.35s ease forwards; }
+    .slide-flip-enter { animation: slideFlip 0.45s ease forwards; }
+    .slide-blur-enter { animation: slideBlur 0.4s ease forwards; }
+    @keyframes slideFadeIn { from { opacity:0; } to { opacity:1; } }
+    @keyframes slideFromRight { from { opacity:0; transform:translateX(60px); } to { opacity:1; transform:translateX(0); } }
+    @keyframes slideFromLeft { from { opacity:0; transform:translateX(-60px); } to { opacity:1; transform:translateX(0); } }
+    @keyframes slideZoomIn { from { opacity:0; transform:scale(0.88); } to { opacity:1; transform:scale(1); } }
+    @keyframes slideZoomOut { from { opacity:0; transform:scale(1.12); } to { opacity:1; transform:scale(1); } }
+    @keyframes slideFlip { from { opacity:0; transform:perspective(800px) rotateY(25deg); } to { opacity:1; transform:perspective(800px) rotateY(0deg); } }
+    @keyframes slideBlur { from { opacity:0; filter:blur(12px); } to { opacity:1; filter:blur(0); } }
+  
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -265,7 +280,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.2.3';
+        const APP_VERSION = '6.2.4';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14311,8 +14326,13 @@ function TrainingAdmin({ supabase }) {
   const [adminCountdown, setAdminCountdown] = React.useState(null);
   const [pausePicker, setPausePicker] = React.useState(null);
   const [videoPicker, setVideoPicker] = React.useState(false);
+  const [transitionStyle, setTransitionStyle] = React.useState('fade'); // fade|slide|zoom|flip|none
   const [videoUrl, setVideoUrl] = React.useState('');
   const [videoInputVal, setVideoInputVal] = React.useState('');
+  const [videoUploadProgress, setVideoUploadProgress] = React.useState(0);
+  const [videoUploading, setVideoUploading] = React.useState(false);
+  const [adminVideoDuration, setAdminVideoDuration] = React.useState(0);
+  const [adminVideoRemaining, setAdminVideoRemaining] = React.useState(null);
   const [pauseMins, setPauseMins] = React.useState(30);
   const [isPaused, setIsPaused] = React.useState(false);
   const [adminPauseSecs, setAdminPauseSecs] = React.useState(0);
@@ -14600,13 +14620,19 @@ function TrainingAdmin({ supabase }) {
 
   async function startVideo(url) {
     if (!sessionRef.current || !url.trim()) return;
-    // Convert Google Drive share link to embed
     let embedUrl = url.trim();
-    // Drive: https://drive.google.com/file/d/ID/view -> /preview
+    // Extract src from full iframe code if pasted
+    const iframeSrc = embedUrl.match(/src="([^"]+)"/);
+    if (iframeSrc) embedUrl = iframeSrc[1];
+    // Drive: /view or /edit -> /preview
     embedUrl = embedUrl.replace(/\/view(\?.*)?$/, '/preview').replace(/\/edit(\?.*)?$/, '/preview');
-    // YouTube: watch?v=ID -> embed/ID
+    // YouTube watch URL -> embed
     const ytMatch = embedUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
-    if (ytMatch) embedUrl = 'https://www.youtube.com/embed/'+ytMatch[1]+'?autoplay=1';
+    if (ytMatch) embedUrl = 'https://www.youtube.com/embed/'+ytMatch[1]+'?autoplay=1&enablejsapi=1&rel=0';
+    // Already an embed URL — add autoplay if missing
+    if (embedUrl.includes('youtube.com/embed') && !embedUrl.includes('autoplay')) {
+      embedUrl += (embedUrl.includes('?') ? '&' : '?') + 'autoplay=1&enablejsapi=1&rel=0';
+    }
     await supabase.from("training_sessions").update({ video_url: embedUrl }).eq("id", sessionRef.current);
     setVideoUrl(embedUrl);
     setVideoPicker(false);
@@ -14666,14 +14692,16 @@ function TrainingAdmin({ supabase }) {
   }
 
   async function loadActiveSession() {
-    const { data } = await supabase.from("training_sessions").select("*").eq("active", true)
+    const { data, error } = await supabase.from("training_sessions").select("*").eq("active", true)
       .order("started_at", { ascending: false }).limit(1).maybeSingle();
+    if (error) return; // ignore 400 errors (missing columns etc.)
     if (data) {
       setSession(data);
       setCurrentSlide(data.slide_index);
       sessionRef.current = data.id;
       setIsPaused(!!data.pause_type);
       setVideoUrl(data.video_url||'');
+      if (data.transition_style) setTransitionStyle(data.transition_style);
       if (data.playlist_index !== null) setPlaylistIndex(data.playlist_index || 0);
       if (data.playlist_id) {
         const pl = playlists.find(p => p.id === data.playlist_id);
@@ -14721,6 +14749,15 @@ function TrainingAdmin({ supabase }) {
     setStartTimePicker(null);
     setStartTimeVal('');
     setView("present");
+  }
+
+  async function applyTransition(style) {
+    setTransitionStyle(style);
+    if (sessionRef.current) {
+      try {
+        await supabase.from("training_sessions").update({ transition_style: style }).eq("id", sessionRef.current);
+      } catch(e) { /* column may not exist yet */ }
+    }
   }
 
   async function stopSession() {
@@ -15537,12 +15574,24 @@ function TrainingAdmin({ supabase }) {
           </div>
         )}
         {!adminCountdown && videoUrl && (
-          <div style={{background:'rgba(59,130,246,0.12)',borderBottom:'1px solid rgba(59,130,246,0.3)',padding:'6px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{width:8,height:8,borderRadius:'50%',background:'#3b82f6',animation:'pulse 1s infinite',display:'inline-block'}}></span>
-              <span style={{color:'#93c5fd',fontSize:12,fontWeight:600}}>🎬 VIDEO LÄUFT – Agenten sehen das Video</span>
+          <div style={{background:'rgba(59,130,246,0.12)',borderBottom:'1px solid rgba(59,130,246,0.3)',padding:'8px 16px',flexShrink:0}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:adminVideoDuration?4:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{width:9,height:9,borderRadius:'50%',background:'#3b82f6',animation:'pulse 1s infinite',display:'inline-block'}}></span>
+                <span style={{color:'#93c5fd',fontSize:12,fontWeight:600}}>🎬 VIDEO LÄUFT – Agenten sehen das Video</span>
+                {adminVideoRemaining!==null&&adminVideoDuration>0&&(
+                  <span style={{color:'#64748b',fontSize:11}}>
+                    · noch {Math.floor(adminVideoRemaining/60)}:{String(Math.floor(adminVideoRemaining%60)).padStart(2,'0')} / {Math.floor(adminVideoDuration/60)}:{String(Math.floor(adminVideoDuration%60)).padStart(2,'0')}
+                  </span>
+                )}
+              </div>
+              <button onClick={stopVideo} style={{background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>⏹ Stoppen</button>
             </div>
-            <button onClick={stopVideo} style={{background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>⏹ Stoppen</button>
+            {adminVideoDuration>0&&adminVideoRemaining!==null&&(
+              <div style={{background:'rgba(255,255,255,0.05)',borderRadius:3,height:4,overflow:'hidden'}}>
+                <div style={{width:((adminVideoDuration-adminVideoRemaining)/adminVideoDuration*100)+'%',height:'100%',background:'#3b82f6',transition:'width 1s linear'}}/>
+              </div>
+            )}
           </div>
         )}
         {!adminCountdown && !videoUrl && (
@@ -15552,6 +15601,12 @@ function TrainingAdmin({ supabase }) {
           </div>
         )}
         <div className="flex-1 flex bg-black overflow-hidden">
+          {/* Hidden video for duration tracking */}
+          {videoUrl && !videoUrl.includes('youtube') && !videoUrl.includes('drive') && !videoUrl.includes('/preview') && (
+            <video src={videoUrl} style={{display:'none'}}
+              onLoadedMetadata={e=>{ setAdminVideoDuration(e.target.duration); setAdminVideoRemaining(e.target.duration); }}
+              onTimeUpdate={e=>setAdminVideoRemaining(Math.max(0, e.target.duration - e.target.currentTime))}/>
+          )}
           <div className="flex-1 flex items-center justify-center relative">
             <SlideImage
               supabase={supabase} presId={selectedPres.id} index={currentSlide}
@@ -15693,20 +15748,56 @@ function TrainingAdmin({ supabase }) {
 
         {/* Video Picker Modal */}
         {videoPicker && (
-          <div style={{position:'absolute',bottom:70,left:'50%',transform:'translateX(-50%)',zIndex:100,background:'#1e293b',border:'1px solid #334155',borderRadius:14,padding:'16px 20px',minWidth:360,boxShadow:'0 10px 40px rgba(0,0,0,0.6)'}}>
+          <div style={{position:'absolute',bottom:70,left:'50%',transform:'translateX(-50%)',zIndex:100,background:'#1e293b',border:'1px solid #334155',borderRadius:14,padding:'16px 20px',minWidth:380,boxShadow:'0 10px 40px rgba(0,0,0,0.6)'}}>
             <div style={{color:'#fff',fontWeight:700,fontSize:14,marginBottom:4}}>🎬 Video einblenden</div>
-            <div style={{color:'#64748b',fontSize:11,marginBottom:10}}>Google Drive Link, YouTube URL oder lokaler Dateipfad</div>
+            <div style={{color:'#64748b',fontSize:11,marginBottom:10}}>YouTube, Google Drive oder lokale Datei hochladen</div>
             <input value={videoInputVal} onChange={e=>setVideoInputVal(e.target.value)}
-              placeholder="https://drive.google.com/... oder YouTube URL"
-              style={{width:'100%',background:'#0f172a',border:'1px solid #334155',borderRadius:8,color:'#fff',padding:'8px 12px',fontSize:12,marginBottom:8,boxSizing:'border-box'}}/>
-            <div style={{color:'#475569',fontSize:10,marginBottom:8}}>Oder lokale Datei:</div>
-            <input type="file" accept="video/*" onChange={e=>{
+              placeholder="YouTube URL, Drive Link oder kompletten iframe-Code einfügen"
+              style={{width:'100%',background:'#0f172a',border:'1px solid #334155',borderRadius:8,color:'#fff',padding:'8px 12px',fontSize:12,marginBottom:10,boxSizing:'border-box'}}/>
+            <div style={{background:'rgba(249,115,22,0.08)',border:'1px solid rgba(249,115,22,0.2)',borderRadius:7,padding:'8px 10px',marginBottom:8,fontSize:11,color:'#f97316'}}>
+              💡 <strong>Für große Videos (&gt;50MB):</strong> Google Drive → Datei hochladen → Rechtsklick → "Link abrufen" → Eingeschränkt auf "Jeder mit dem Link" ändern → Link hier einfügen
+            </div>
+            <div style={{color:'#94a3b8',fontSize:11,fontWeight:600,marginBottom:6}}>Kleine Datei (&lt;50MB) direkt hochladen:</div>
+            <input type="file" accept="video/*" id="video-upload-input" style={{display:'none'}} onChange={async e=>{
               const f=e.target.files[0];
-              if(f) setVideoInputVal(URL.createObjectURL(f));
-            }} style={{color:'#94a3b8',fontSize:11,marginBottom:10,display:'block'}}/>
+              if(!f) return;
+              setVideoUploading(true); setVideoUploadProgress(0); setVideoInputVal('');
+              const path='training-videos/'+Date.now()+'-'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+              // Simulate progress while uploading
+              let prog=0;
+              const progInterval = setInterval(()=>{ prog=Math.min(90,prog+Math.random()*15); setVideoUploadProgress(Math.round(prog)); },400);
+              // Check file size (Supabase free: 50MB limit)
+              if (f.size > 50*1024*1024) {
+                clearInterval(progInterval);
+                setVideoUploading(false);
+                setVideoInputVal('');
+                alert('Datei zu groß ('+Math.round(f.size/1024/1024)+'MB). Supabase erlaubt max 50MB.\nBitte nutze Google Drive:\n1. Video in Drive hochladen\n2. "Freigabelink" kopieren\n3. Link oben einfügen');
+                return;
+              }
+              const {error} = await supabase.storage.from('training-slides').upload(path, f, {cacheControl:'3600',upsert:true,contentType:f.type});
+              clearInterval(progInterval);
+              if(error){ setVideoUploading(false); setVideoInputVal('Fehler: '+error.message+(error.message.includes('size')?'\n→ Tipp: Nutze Google Drive für große Videos':'')); return; }
+              setVideoUploadProgress(100);
+              const {data} = supabase.storage.from('training-slides').getPublicUrl(path);
+              setVideoUploading(false);
+              setVideoInputVal(data.publicUrl);
+            }}/>
+            {videoUploading ? (
+              <div style={{marginBottom:10}}>
+                <div style={{color:'#93c5fd',fontSize:11,marginBottom:4}}>Lädt hoch… {videoUploadProgress}%</div>
+                <div style={{background:'#0f172a',borderRadius:4,height:8,overflow:'hidden'}}>
+                  <div style={{width:videoUploadProgress+'%',height:'100%',background:'linear-gradient(90deg,#3b82f6,#06b6d4)',transition:'width 0.3s'}}/>
+                </div>
+              </div>
+            ) : (
+              <button onClick={()=>document.getElementById('video-upload-input').click()}
+                style={{width:'100%',background:'rgba(59,130,246,0.1)',color:'#93c5fd',border:'1px solid rgba(59,130,246,0.3)',borderRadius:8,padding:'8px',fontSize:12,fontWeight:700,cursor:'pointer',marginBottom:10}}>
+                📁 Lokale Videodatei hochladen
+              </button>
+            )}
             <div style={{display:'flex',gap:8}}>
-              <button onClick={()=>startVideo(videoInputVal)} disabled={!videoInputVal.trim()}
-                style={{flex:1,background:videoInputVal.trim()?'linear-gradient(135deg,#3b82f6,#1d4ed8)':'rgba(255,255,255,0.05)',color:videoInputVal.trim()?'#fff':'#64748b',border:'none',borderRadius:8,padding:'8px',fontWeight:700,fontSize:13,cursor:videoInputVal.trim()?'pointer':'not-allowed'}}>
+              <button onClick={()=>startVideo(videoInputVal)} disabled={!videoInputVal.trim()||videoInputVal.startsWith('Lädt')}
+                style={{flex:1,background:videoInputVal.trim()&&!videoInputVal.startsWith('Lädt')?'linear-gradient(135deg,#3b82f6,#1d4ed8)':'rgba(255,255,255,0.05)',color:videoInputVal.trim()&&!videoInputVal.startsWith('Lädt')?'#fff':'#64748b',border:'none',borderRadius:8,padding:'8px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
                 ▶ Video starten
               </button>
               <button onClick={()=>{setVideoPicker(false);setVideoInputVal('');}}
@@ -15832,6 +15923,17 @@ function TrainingAdmin({ supabase }) {
               )}
             </>
           )}
+          <select value={transitionStyle} onChange={e=>applyTransition(e.target.value)}
+            style={{background:'#1e293b',color:'#94a3b8',border:'1px solid #334155',borderRadius:8,padding:'7px 10px',fontSize:12,cursor:'pointer'}}>
+            <option value="fade">✨ Überblenden</option>
+            <option value="slide-left">→ Slide Links</option>
+            <option value="slide-right">← Slide Rechts</option>
+            <option value="zoom-in">🔍 Zoom In</option>
+            <option value="zoom-out">🔎 Zoom Out</option>
+            <option value="flip">🔄 Flip</option>
+            <option value="blur">💫 Blur</option>
+            <option value="none">Kein Effekt</option>
+          </select>
           <button onClick={stopSession}
             style={{background:'rgba(127,29,29,0.4)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:8,padding:'8px 12px',fontSize:13,cursor:'pointer'}}>
             Beenden
@@ -15852,6 +15954,9 @@ function TrainingAgent({ supabase }) {
   const [isLive, setIsLive] = React.useState(false);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [pauseSecs, setPauseSecs] = React.useState(0);
+  const [slideTransition, setSlideTransition] = React.useState('fade');
+  const [slideKey, setSlideKey] = React.useState(0); // changes trigger animation
+  const [slideAnimating, setSlideAnimating] = React.useState(false);
   const [quizAnswered, setQuizAnswered] = React.useState(null);
   const [quizSubmitting, setQuizSubmitting] = React.useState(null); // question id being submitted
   const imgRef = React.useRef(null);
@@ -15868,9 +15973,16 @@ function TrainingAgent({ supabase }) {
           checkStartTime(payload.new);
         } else if (payload.eventType === "UPDATE" && payload.new?.active) {
           setSession(payload.new);
-          setCurrentSlide(payload.new.slide_index);
+          if (payload.new.slide_index !== undefined) {
+            setSlideAnimating(true);
+            setTimeout(() => {
+              setCurrentSlide(payload.new.slide_index);
+              setSlideKey(k=>k+1);
+              setSlideAnimating(false);
+            }, payload.new.transition_style==='none'?0:80);
+          }
+          setSlideTransition(payload.new.transition_style||'fade');
           if (!payload.new?.quiz_active) setQuizAnswered(null);
-          // Auto-exit fullscreen when video starts
           if (payload.new?.video_url && isFullscreen) setIsFullscreen(false);
         } else if (!payload.new?.active) {
           setSession(null); setPres(null); setIsLive(false); setCountdown(null); setQuizAnswered(null);
@@ -16050,19 +16162,25 @@ function TrainingAgent({ supabase }) {
 
   // Video Screen
   if (isLive && session?.video_url) {
+    const isEmbed = session.video_url.includes('youtube.com/embed') || 
+      session.video_url.includes('drive.google.com') || 
+      session.video_url.includes('/preview');
+    // Supabase storage URLs are always direct — never embed
     return (
-      <div style={{background:'#000',minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative'}}>
-        <div style={{position:'absolute',top:12,left:16,color:'#475569',fontSize:12,display:'flex',alignItems:'center',gap:6}}>
-          <span style={{width:8,height:8,borderRadius:'50%',background:'#3b82f6',animation:'pulse 2s infinite',display:'inline-block'}}></span>
-          Video läuft
-        </div>
-        {session.video_url.startsWith('blob:') ? (
-          <video src={session.video_url} autoPlay controls
-            style={{width:'100vw',maxHeight:'100vh',objectFit:'contain'}}/>
+      <div style={{position:'fixed',inset:0,zIndex:9999,background:'#000',display:'flex',flexDirection:'column'}}>
+        {isEmbed ? (
+          <iframe src={session.video_url} allowFullScreen allow="autoplay; fullscreen; encrypted-media"
+            style={{flex:1,width:'100%',border:'none'}}/>
         ) : (
-          <iframe src={session.video_url} allowFullScreen allow="autoplay"
-            style={{width:'100vw',height:'100vh',border:'none'}}/>
+          <video src={session.video_url} autoPlay controls playsInline
+            style={{flex:1,width:'100%',maxHeight:'100vh',objectFit:'contain',background:'#000'}}
+            onCanPlay={e=>{ e.target.play().catch(()=>{}); }}
+          />
         )}
+        <div style={{position:'absolute',bottom:0,left:0,right:0,background:'linear-gradient(transparent,rgba(0,0,0,0.7))',padding:'20px 16px 10px',display:'flex',alignItems:'center',gap:8,pointerEvents:'none'}}>
+          <span style={{width:8,height:8,borderRadius:'50%',background:'#3b82f6',animation:'pulse 2s infinite',display:'inline-block'}}></span>
+          <span style={{color:'#93c5fd',fontSize:13,fontWeight:600}}>Video läuft</span>
+        </div>
       </div>
     );
   }
@@ -16114,8 +16232,10 @@ function TrainingAgent({ supabase }) {
   if (isFullscreen) return (
     <div style={{position:'fixed',inset:0,zIndex:9999,background:'#000',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}
       onClick={toggleFullscreen} title="Tippen zum Beenden">
-      <SlideImage supabase={supabase} presId={pres.id} index={currentSlide}
-        alt={`Folie ${currentSlide}`} style={{width:'100vw',height:'100vh',objectFit:'contain'}}/>
+      <div key={slideKey} className={slideTransition!=='none'?'slide-'+slideTransition+'-enter':''} style={{width:'100vw',height:'100vh'}}>
+        <SlideImage supabase={supabase} presId={pres.id} index={currentSlide}
+          alt={`Folie ${currentSlide}`} style={{width:'100vw',height:'100vh',objectFit:'contain'}}/>
+      </div>
       <div style={{position:'absolute',bottom:16,right:16,background:'rgba(0,0,0,0.6)',borderRadius:8,padding:'4px 14px',color:'#fff',fontSize:15,fontWeight:700}}>
         {currentSlide} / {pres.slide_count}
       </div>
@@ -16134,8 +16254,10 @@ function TrainingAgent({ supabase }) {
       </div>
       <div ref={imgRef} onClick={toggleFullscreen}
         style={{width:'100%',maxWidth:960,background:'#000',borderRadius:14,overflow:'hidden',border:'1px solid #1e293b',boxShadow:'0 30px 60px rgba(0,0,0,0.7)',cursor:'pointer'}}>
-        <SlideImage supabase={supabase} presId={pres.id} index={currentSlide}
-          alt={`Folie ${currentSlide}`} style={{width:"100%",aspectRatio:"16/9",objectFit:"contain"}}/>
+        <div key={slideKey} className={slideTransition!=='none'?'slide-'+slideTransition+'-enter':''} style={{width:'100%'}}>
+          <SlideImage supabase={supabase} presId={pres.id} index={currentSlide}
+            alt={`Folie ${currentSlide}`} style={{width:"100%",aspectRatio:"16/9",objectFit:"contain"}}/>
+        </div>
       </div>
       <div style={{display:'flex',alignItems:'center',gap:8,marginTop:14,color:'#475569',fontSize:14}}>
         <span style={{width:10,height:10,borderRadius:'50%',background:'#22c55e',display:'inline-block',animation:'pulse 2s infinite'}}></span>
