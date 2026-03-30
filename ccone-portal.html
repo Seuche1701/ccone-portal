@@ -265,7 +265,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.2.2';
+        const APP_VERSION = '6.2.3';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14309,7 +14309,10 @@ function TrainingAdmin({ supabase }) {
   const [startTimePicker, setStartTimePicker] = React.useState(null);
   const [startTimeVal, setStartTimeVal] = React.useState('');
   const [adminCountdown, setAdminCountdown] = React.useState(null);
-  const [pausePicker, setPausePicker] = React.useState(null); // 'mittagspause'|'kurzpause'|null
+  const [pausePicker, setPausePicker] = React.useState(null);
+  const [videoPicker, setVideoPicker] = React.useState(false);
+  const [videoUrl, setVideoUrl] = React.useState('');
+  const [videoInputVal, setVideoInputVal] = React.useState('');
   const [pauseMins, setPauseMins] = React.useState(30);
   const [isPaused, setIsPaused] = React.useState(false);
   const [adminPauseSecs, setAdminPauseSecs] = React.useState(0);
@@ -14595,6 +14598,27 @@ function TrainingAdmin({ supabase }) {
     setQuizAnswers([]);
   }
 
+  async function startVideo(url) {
+    if (!sessionRef.current || !url.trim()) return;
+    // Convert Google Drive share link to embed
+    let embedUrl = url.trim();
+    // Drive: https://drive.google.com/file/d/ID/view -> /preview
+    embedUrl = embedUrl.replace(/\/view(\?.*)?$/, '/preview').replace(/\/edit(\?.*)?$/, '/preview');
+    // YouTube: watch?v=ID -> embed/ID
+    const ytMatch = embedUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+    if (ytMatch) embedUrl = 'https://www.youtube.com/embed/'+ytMatch[1]+'?autoplay=1';
+    await supabase.from("training_sessions").update({ video_url: embedUrl }).eq("id", sessionRef.current);
+    setVideoUrl(embedUrl);
+    setVideoPicker(false);
+    setVideoInputVal('');
+  }
+
+  async function stopVideo() {
+    if (!sessionRef.current) return;
+    await supabase.from("training_sessions").update({ video_url: null }).eq("id", sessionRef.current);
+    setVideoUrl('');
+  }
+
   async function savePlaylist() {
     if (!playlistTitle.trim() || playlistItems.length < 2) return;
     const id = playlistTitle.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') + '-' + Date.now();
@@ -14649,6 +14673,7 @@ function TrainingAdmin({ supabase }) {
       setCurrentSlide(data.slide_index);
       sessionRef.current = data.id;
       setIsPaused(!!data.pause_type);
+      setVideoUrl(data.video_url||'');
       if (data.playlist_index !== null) setPlaylistIndex(data.playlist_index || 0);
       if (data.playlist_id) {
         const pl = playlists.find(p => p.id === data.playlist_id);
@@ -15511,7 +15536,16 @@ function TrainingAdmin({ supabase }) {
             </div>
           </div>
         )}
-        {!adminCountdown && (
+        {!adminCountdown && videoUrl && (
+          <div style={{background:'rgba(59,130,246,0.12)',borderBottom:'1px solid rgba(59,130,246,0.3)',padding:'6px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{width:8,height:8,borderRadius:'50%',background:'#3b82f6',animation:'pulse 1s infinite',display:'inline-block'}}></span>
+              <span style={{color:'#93c5fd',fontSize:12,fontWeight:600}}>🎬 VIDEO LÄUFT – Agenten sehen das Video</span>
+            </div>
+            <button onClick={stopVideo} style={{background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>⏹ Stoppen</button>
+          </div>
+        )}
+        {!adminCountdown && !videoUrl && (
           <div style={{background:'rgba(34,197,94,0.08)',borderBottom:'1px solid rgba(34,197,94,0.2)',padding:'6px 16px',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
             <span style={{width:8,height:8,borderRadius:'50%',background:'#22c55e',animation:'pulse 2s infinite',display:'inline-block'}}></span>
             <span style={{color:'#86efac',fontSize:12,fontWeight:600}}>LIVE – Agenten sehen jetzt deine Folien</span>
@@ -15657,6 +15691,30 @@ function TrainingAdmin({ supabase }) {
           );
         })()}
 
+        {/* Video Picker Modal */}
+        {videoPicker && (
+          <div style={{position:'absolute',bottom:70,left:'50%',transform:'translateX(-50%)',zIndex:100,background:'#1e293b',border:'1px solid #334155',borderRadius:14,padding:'16px 20px',minWidth:360,boxShadow:'0 10px 40px rgba(0,0,0,0.6)'}}>
+            <div style={{color:'#fff',fontWeight:700,fontSize:14,marginBottom:4}}>🎬 Video einblenden</div>
+            <div style={{color:'#64748b',fontSize:11,marginBottom:10}}>Google Drive Link, YouTube URL oder lokaler Dateipfad</div>
+            <input value={videoInputVal} onChange={e=>setVideoInputVal(e.target.value)}
+              placeholder="https://drive.google.com/... oder YouTube URL"
+              style={{width:'100%',background:'#0f172a',border:'1px solid #334155',borderRadius:8,color:'#fff',padding:'8px 12px',fontSize:12,marginBottom:8,boxSizing:'border-box'}}/>
+            <div style={{color:'#475569',fontSize:10,marginBottom:8}}>Oder lokale Datei:</div>
+            <input type="file" accept="video/*" onChange={e=>{
+              const f=e.target.files[0];
+              if(f) setVideoInputVal(URL.createObjectURL(f));
+            }} style={{color:'#94a3b8',fontSize:11,marginBottom:10,display:'block'}}/>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>startVideo(videoInputVal)} disabled={!videoInputVal.trim()}
+                style={{flex:1,background:videoInputVal.trim()?'linear-gradient(135deg,#3b82f6,#1d4ed8)':'rgba(255,255,255,0.05)',color:videoInputVal.trim()?'#fff':'#64748b',border:'none',borderRadius:8,padding:'8px',fontWeight:700,fontSize:13,cursor:videoInputVal.trim()?'pointer':'not-allowed'}}>
+                ▶ Video starten
+              </button>
+              <button onClick={()=>{setVideoPicker(false);setVideoInputVal('');}}
+                style={{padding:'8px 14px',borderRadius:8,background:'rgba(255,255,255,0.05)',color:'#94a3b8',border:'1px solid #334155',cursor:'pointer',fontSize:13}}>✕</button>
+            </div>
+          </div>
+        )}
+
         {/* Pause-Picker Modal */}
         {pausePicker && (
           <div style={{position:'absolute',bottom:70,left:'50%',transform:'translateX(-50%)',zIndex:100,background:'#1e293b',border:'1px solid #334155',borderRadius:14,padding:'16px 20px',minWidth:280,boxShadow:'0 10px 40px rgba(0,0,0,0.6)'}}>
@@ -15749,6 +15807,17 @@ function TrainingAdmin({ supabase }) {
                 style={{background:'rgba(124,58,237,0.15)',color:'#c4b5fd',border:'1px solid rgba(124,58,237,0.4)',borderRadius:8,padding:'8px 12px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
                 ❓ Auffrischung
               </button>
+              {videoUrl ? (
+                <button onClick={stopVideo}
+                  style={{background:'rgba(239,68,68,0.2)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.4)',borderRadius:8,padding:'8px 12px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                  ⏹ Video stoppen
+                </button>
+              ) : (
+                <button onClick={()=>setVideoPicker(true)}
+                  style={{background:'rgba(59,130,246,0.15)',color:'#93c5fd',border:'1px solid rgba(59,130,246,0.3)',borderRadius:8,padding:'8px 12px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                  🎬 Video
+                </button>
+              )}
               {savedAbschluss[selectedPres?.id]&&currentSlide>=(savedAbschluss[selectedPres?.id]?.triggerSlide||selectedPres?.slide_count)&&!abschlussRunning&&(
                 <button onClick={()=>startAbschlusstest(selectedPres.id)}
                   style={{background:'linear-gradient(135deg,rgba(249,115,22,0.3),rgba(234,88,12,0.3))',color:'#f97316',border:'1.5px solid rgba(249,115,22,0.5)',borderRadius:8,padding:'8px 12px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
@@ -15801,6 +15870,8 @@ function TrainingAgent({ supabase }) {
           setSession(payload.new);
           setCurrentSlide(payload.new.slide_index);
           if (!payload.new?.quiz_active) setQuizAnswered(null);
+          // Auto-exit fullscreen when video starts
+          if (payload.new?.video_url && isFullscreen) setIsFullscreen(false);
         } else if (!payload.new?.active) {
           setSession(null); setPres(null); setIsLive(false); setCountdown(null); setQuizAnswered(null);
         }
@@ -15972,6 +16043,25 @@ function TrainingAgent({ supabase }) {
             borderRadius:14,padding:'16px 32px'}}>
             {answered===q.correct_index?'✅ Richtig! Gut gemacht.':'❌ Falsch. Richtig war: '+String.fromCharCode(65+q.correct_index)+'.'}
           </div>
+        )}
+      </div>
+    );
+  }
+
+  // Video Screen
+  if (isLive && session?.video_url) {
+    return (
+      <div style={{background:'#000',minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative'}}>
+        <div style={{position:'absolute',top:12,left:16,color:'#475569',fontSize:12,display:'flex',alignItems:'center',gap:6}}>
+          <span style={{width:8,height:8,borderRadius:'50%',background:'#3b82f6',animation:'pulse 2s infinite',display:'inline-block'}}></span>
+          Video läuft
+        </div>
+        {session.video_url.startsWith('blob:') ? (
+          <video src={session.video_url} autoPlay controls
+            style={{width:'100vw',maxHeight:'100vh',objectFit:'contain'}}/>
+        ) : (
+          <iframe src={session.video_url} allowFullScreen allow="autoplay"
+            style={{width:'100vw',height:'100vh',border:'none'}}/>
         )}
       </div>
     );
