@@ -32,6 +32,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -251,6 +252,7 @@
     @keyframes slideFlip { from { opacity:0; transform:perspective(800px) rotateY(25deg); } to { opacity:1; transform:perspective(800px) rotateY(0deg); } }
     @keyframes slideBlur { from { opacity:0; filter:blur(12px); } to { opacity:1; filter:blur(0); } }
   
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -274,13 +276,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.2.5';
+        const APP_VERSION = '6.2.6';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -648,7 +651,7 @@
         
         function Fireworks(){const[visible,setVisible]=useState(true);useEffect(()=>{const timer=setTimeout(()=>setVisible(false),10000);return()=>clearTimeout(timer)},[]);if(!visible)return null;return(<div className="fixed inset-0 pointer-events-none z-50">{[...Array(20)].map((_,i)=>(<div key={i} className="firework" style={{left:`${5+i*4.5}%`,top:`${20+Math.random()*30}%`,animationDelay:`${(i%5)*0.3+Math.floor(i/5)*1.5}s`}}>{[...Array(20)].map((_,j)=>{const angle=(j/20)*360;const dist=80+Math.random()*60;const tx=Math.cos(angle*Math.PI/180)*dist;const ty=Math.sin(angle*Math.PI/180)*dist;const colors=['#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316'];return <div key={j} className="spark" style={{'--tx':`${tx}px`,'--ty':`${ty}px`,background:colors[j%colors.length]}}/>})}</div>))}</div>)}
         
-        const DEFAULT_DATA={users:[{id:'1',username:'admin',password:'admin123',name:'Administrator',role:'admin'}],quizzes:[],assignments:[],results:[],projects:[{id:'1',name:'EKD'},{id:'2',name:'Immoscout'},{id:'3',name:'VNR'}],agents:[],absences:[],unoGames:[],pokerGames:[],coachingSessions:[],customKeywords:{},customTemplates:{},trainingMaterials:[]};
+        const DEFAULT_DATA={users:[{id:'1',username:'admin',password:'admin123',name:'Administrator',role:'admin'}],quizzes:[],assignments:[],results:[],projects:[{id:'1',name:'EKD'},{id:'2',name:'Immoscout'},{id:'3',name:'VNR'}],agents:[],absences:[],unoGames:[],pokerGames:[],coachingSessions:[],customKeywords:{},customTemplates:{},trainingMaterials:[],wvlLost:[]};
         
         // Apps Script Code
         const APPS_SCRIPT_CODE=`// ccone Quiz Backend v5.0 - GENERIC - Nie wieder redeployen!
@@ -727,7 +730,7 @@ function getData(){
     var keys=['customTemplates','unoGames','pokerGames','results','coachingSessions',
       'assignments','agents','absences','projects','customKeywords','rewardsConfig',
       'rewardsPoints','rewardsHistory','rewardsPurchases','termine','termineConfig','news','monopolyGames',
-      'pausenConfig','pausenAwards','trainingMaterials','trainingMode','spaetschicht','wheelTournaments','onlineUsers','agentMessages'];
+      'pausenConfig','pausenAwards','trainingMaterials','trainingMode','spaetschicht','wheelTournaments','onlineUsers','agentMessages','wvlLost'];
     var objKeys=['customTemplates','customKeywords','rewardsConfig','rewardsPoints',
       'rewardsHistory','rewardsPurchases','pausenConfig','spaetschicht','termineConfig','trainingMode','onlineUsers'];
     keys.forEach(function(key){
@@ -776,7 +779,7 @@ function saveData(data){
   var keys=['customTemplates','unoGames','pokerGames','results','coachingSessions',
     'assignments','agents','absences','projects','customKeywords','rewardsConfig',
     'rewardsPoints','rewardsHistory','rewardsPurchases','termine','termineConfig','news','monopolyGames',
-    'pausenConfig','pausenAwards','trainingMaterials','trainingMode','spaetschicht','wheelTournaments','onlineUsers','agentMessages'];
+    'pausenConfig','pausenAwards','trainingMaterials','trainingMode','spaetschicht','wheelTournaments','onlineUsers','agentMessages','wvlLost'];
   keys.forEach(function(key){
     var range=rm[key];var cell=range?'A'+range.start:null;
     if(!cell||cell==='A1')return;
@@ -1451,7 +1454,7 @@ function getOrCreateSheet(){
         function AdminDashboard({currentUser,appData,updateData,refreshData,onLogout,showNotification,onSettings,onSwitchView,onOpenDashboard}){
             const[activeTab,setActiveTab]=useState('overview');
             const[editingQuiz,setEditingQuiz]=useState(null);
-            const menuItems=[{id:'overview',label:'Übersicht',icon:'chart'},{id:'users',label:'Benutzer',icon:'users'},{id:'quizzes',label:'Lernwelt',icon:'brain'},{id:'assignments',label:'Zielgruppen',icon:'target'},{id:'results',label:'Auswertungen',icon:'award'},{id:'coaching',label:'Coaching',icon:'headphones'},{id:'training',label:'Trainingscenter',icon:'book'},{id:'absence',label:'Abwesenheit',icon:'calendar'},{id:'termine',label:'Termine',icon:'clock'},{id:'spaetschicht',label:'Spätschicht',icon:'clock'},{id:'turnier',label:'Turnier',icon:'trophy'},{id:'news',label:'News',icon:'bell'},{id:'messages',label:'Nachrichten',icon:'chat'},{id:'rewards',label:'Belohnungen',icon:'trophy'},{id:'pausen',label:'Pausen',icon:'coffee'},{id:'storage',label:'Speicher',icon:'database'},{id:'update',label:'Update',icon:'rocket'}];
+            const menuItems=[{id:'overview',label:'Übersicht',icon:'chart'},{id:'users',label:'Benutzer',icon:'users'},{id:'quizzes',label:'Lernwelt',icon:'brain'},{id:'assignments',label:'Zielgruppen',icon:'target'},{id:'results',label:'Auswertungen',icon:'award'},{id:'coaching',label:'Coaching',icon:'headphones'},{id:'training',label:'Trainingscenter',icon:'book'},{id:'absence',label:'Abwesenheit',icon:'calendar'},{id:'termine',label:'Termine',icon:'clock'},{id:'spaetschicht',label:'Spätschicht',icon:'clock'},{id:'turnier',label:'Turnier',icon:'trophy'},{id:'news',label:'News',icon:'bell'},{id:'messages',label:'Nachrichten',icon:'chat'},{id:'rewards',label:'Belohnungen',icon:'trophy'},{id:'pausen',label:'Pausen',icon:'coffee'},{id:'storage',label:'Speicher',icon:'database'},{id:'wvlLost',label:'WVL Lost',icon:'target'},{id:'update',label:'Update',icon:'rocket'}];
             // Filter menu items by role/permissions
             const visibleMenuItems=currentUser.role==='admin'?menuItems:menuItems.filter(m=>(currentUser.adminTabs||[]).includes(m.id));
             const canSwitchView=['admin','teamleiter','standardbenutzer'].includes(currentUser.role);
@@ -1572,6 +1575,7 @@ function getOrCreateSheet(){
                         {activeTab==='turnier'&&<WheelTournament appData={filteredData} updateData={updateData} showNotification={showNotification} currentUser={currentUser} isAdmin={true}/>}
                         {activeTab==='rewards'&&<RewardsTab appData={filteredData} updateData={updateData} showNotification={showNotification}/>}
                         {activeTab==='storage'&&<StorageTab appData={appData} updateData={updateData} showNotification={showNotification} api={api}/>}
+                        {activeTab==='wvlLost'&&<WvlLostTab appData={filteredData} updateData={updateData} showNotification={showNotification}/>}
                         {activeTab==='update'&&<UpdateTab showNotification={showNotification}/>}
                     </div>
                 </div>
@@ -3085,7 +3089,7 @@ function getOrCreateSheet(){
             const[filter,setFilter]=useState('all');
             const ROLES=[{id:'admin',label:'👑 Admin',color:'#7c3aed',desc:'Voller Zugriff'},{id:'teamleiter',label:'🎖️ Teamleiter',color:'#f59e0b',desc:'Admin + Agent, eingeschränkt'},{id:'standardbenutzer',label:'👤 Standardbenutzer',color:'#3b82f6',desc:'Admin + Agent, eingeschränkt'},{id:'user',label:'🎯 Agent',color:'#10b981',desc:'Nur Agent-Oberfläche'}];
             const STANDORTE=[{id:'',label:'— Kein Standort'},{id:'berlin',label:'📍 Berlin'},{id:'chemnitz',label:'📍 Chemnitz'}];
-            const ADMIN_TABS=[{id:'overview',label:'📊 Übersicht'},{id:'users',label:'👥 Benutzer'},{id:'quizzes',label:'🧠 Lernwelt'},{id:'assignments',label:'🎯 Zielgruppen'},{id:'results',label:'📊 Auswertungen'},{id:'coaching',label:'🎧 Coaching'},{id:'training',label:'📚 Trainingscenter'},{id:'absence',label:'📅 Abwesenheit'},{id:'termine',label:'⏰ Termine'},{id:'spaetschicht',label:'🌙 Spätschicht'},{id:'turnier',label:'🏆 Turnier'},{id:'news',label:'📰 News'},{id:'messages',label:'💬 Nachrichten'},{id:'rewards',label:'🎁 Belohnungen'},{id:'pausen',label:'☕ Pausen'},{id:'storage',label:'💾 Speicher'},{id:'update',label:'🚀 Update'}];
+            const ADMIN_TABS=[{id:'overview',label:'📊 Übersicht'},{id:'users',label:'👥 Benutzer'},{id:'quizzes',label:'🧠 Lernwelt'},{id:'assignments',label:'🎯 Zielgruppen'},{id:'results',label:'📊 Auswertungen'},{id:'coaching',label:'🎧 Coaching'},{id:'training',label:'📚 Trainingscenter'},{id:'absence',label:'📅 Abwesenheit'},{id:'termine',label:'⏰ Termine'},{id:'spaetschicht',label:'🌙 Spätschicht'},{id:'turnier',label:'🏆 Turnier'},{id:'news',label:'📰 News'},{id:'messages',label:'💬 Nachrichten'},{id:'rewards',label:'🎁 Belohnungen'},{id:'pausen',label:'☕ Pausen'},{id:'storage',label:'💾 Speicher'},{id:'wvlLost',label:'📋 WVL Lost'},{id:'update',label:'🚀 Update'}];
             const AGENT_PERMS=[{id:'agent',label:'🎯 Agent'},{id:'coaching',label:'🎧 Coaching'},{id:'results',label:'📊 Ergebnisse'},{id:'training',label:'📚 Training'},{id:'unoHost',label:'🎮 UNO Host'}];
             const handleSubmit=()=>{if(!form.username||!form.password||!form.name)return;onAdd(form);setForm({username:'',password:'',name:'',role:'user',standort:'',permissions:['agent'],adminTabs:[]});setShowForm(false)};
             const startEdit=(user)=>{setEditingUser({...user,permissions:user.permissions||['agent'],adminTabs:user.adminTabs||[],standort:user.standort||''})};
@@ -3311,6 +3315,190 @@ function getOrCreateSheet(){
         }
 
         function ResultsTab({results,data,exportResults,updateData,appData,showNotification}){const[selectedResult,setSelectedResult]=useState(null);const[feedbackText,setFeedbackText]=useState('');const sendFeedback=(result)=>{if(!feedbackText.trim()){showNotification('Bitte Nachricht eingeben','error');return}const updatedResult={...result,feedback:feedbackText,feedbackAt:new Date().toISOString()};const updatedResults=appData.results.map(r=>r.id===result.id?updatedResult:r);updateData({...appData,results:updatedResults});setFeedbackText('');setSelectedResult(null);showNotification('Feedback gesendet!')};const toggleDetailsRelease=(result)=>{const updatedResults=appData.results.map(r=>r.id===result.id?{...r,detailsReleased:!r.detailsReleased}:r);updateData({...appData,results:updatedResults});showNotification(result.detailsReleased?'Auswertung gesperrt':'Auswertung freigegeben!')};const deleteResult=async(resultId)=>{if(!confirm('Auswertung wirklich löschen? Dies kann nicht rückgängig gemacht werden.'))return;const updatedResults=appData.results.filter(r=>r.id!==resultId);updateData({...appData,results:updatedResults});setSelectedResult(null);try{const rm=appData.storageConfig?.rangeMap;const resCell=rm?.results?'A'+rm.results.start:'A1';if(resCell!=='A1'){await api.writeCells({[resCell]:JSON.stringify(updatedResults)})}}catch(e){console.error('writeCells fallback:',e)}showNotification('Auswertung gelöscht')};return(<div className="animate-fade-in"><div className="flex justify-between items-center mb-4"><div><h2 className="text-xl font-bold text-white">📊 Auswertungen</h2><p className="text-xs text-slate-500">{results.length} Ergebnisse</p></div><button onClick={exportResults} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-900/30 text-emerald-300 rounded-lg hover:bg-emerald-900/50 border border-emerald-500/30 font-medium text-sm"><Icon name="download" size={14}/>Export</button></div>{results.filter(r=>r.userMessage&&!r.detailsReleased).length>0&&(<div className="mb-3 bg-amber-900/30 border border-amber-500/30 rounded-xl p-3"><h3 className="font-bold text-amber-200 text-sm mb-2">📬 Freigabe-Anfragen</h3><div className="space-y-1.5">{results.filter(r=>r.userMessage&&!r.detailsReleased).map(r=>{const user=data.users.find(u=>u.id===r.userId);const quiz=data.quizzes.find(q=>q.id===r.quizId);return(<div key={r.id} className="flex items-center justify-between bg-slate-800/50 rounded-lg p-2"><div><p className="text-sm font-medium text-white">{user?.name}: "{r.userMessage}"</p><p className="text-xs text-slate-500">{quiz?.title} • {r.score}%</p></div><button onClick={()=>setSelectedResult(r)} className="px-2 py-0.5 rounded text-xs font-bold" style={{background:"rgba(16,185,129,0.2)",color:"#34d399"}}>Ansehen</button></div>)})}</div></div>)}{selectedResult&&(<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-auto animate-fade-in"><div className="p-4 border-b border-slate-700"><div className="flex justify-between items-start"><div><h3 className="text-lg font-bold text-white">{data.users.find(u=>u.id===selectedResult.userId)?.name}</h3><p className="text-slate-400">{data.quizzes.find(q=>q.id===selectedResult.quizId)?.title}</p></div><button onClick={()=>setSelectedResult(null)} className="text-slate-400 hover:text-slate-600"><Icon name="x" size={24}/></button></div><div className="flex items-center gap-4 mt-4"><span className={`text-2xl font-bold ${selectedResult.score>=80?'text-green-400':'text-red-400'}`}>{selectedResult.score}%</span><span className={`px-3 py-1 rounded-full text-sm font-medium ${selectedResult.score>=80?'bg-green-100 text-green-700':'bg-red-900/30 text-red-300'}`}>{selectedResult.score>=80?'✅ Bestanden':'❌ Nicht bestanden'}</span></div></div>{selectedResult.userMessage&&(<div className="p-4 border-b border-slate-700 bg-amber-900/30"><h4 className="font-semibold text-amber-200 mb-2">💬 Nachricht vom Agent:</h4><p className="text-amber-900">"{selectedResult.userMessage}"</p></div>)}<div className="p-4 border-b border-slate-700"><h4 className="font-bold text-white text-sm mb-2">📋 Antworten im Detail</h4><div className="space-y-2 max-h-64 overflow-auto">{selectedResult.answers?.map((answer,idx)=>{const quiz=data.quizzes.find(q=>q.id===selectedResult.quizId);const question=quiz?.questions[idx];if(!question)return null;const isCorrect=answer.selected===answer.correct;return(<div key={idx} className={`p-3 rounded-lg text-sm ${isCorrect?'bg-green-900/30':'bg-red-900/30'}`}><div className="flex items-start gap-2"><span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs ${isCorrect?'bg-green-900/300':'bg-red-900/300'}`}>{isCorrect?'✓':'✗'}</span><div><p className="font-medium text-slate-700">{idx+1}. {question.question}</p><p className="text-slate-400">Antwort: <span className={isCorrect?'text-green-700':'text-red-700'}>{question.options[answer.selected]}</span></p>{!isCorrect&&<p className="text-green-700">Richtig: {question.options[answer.correct]}</p>}</div></div></div>)})}</div></div><div className="p-4"><h4 className="font-bold text-white text-sm mb-2">💬 Nachricht an Agent</h4><textarea value={feedbackText} onChange={(e)=>setFeedbackText(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-600 bg-slate-800/80 text-white resize-none text-xs" rows={2} placeholder="Feedback..."/><div className="flex gap-2 mt-3 flex-wrap"><button onClick={()=>sendFeedback(selectedResult)} className="px-3 py-1.5 rounded-lg font-bold text-sm" style={{background:"linear-gradient(135deg,#10b981,#059669)",color:"#fff"}}>📤 Senden</button><button onClick={()=>toggleDetailsRelease(selectedResult)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${selectedResult.detailsReleased?'bg-red-900/30 text-red-300':'bg-emerald-900/30 text-emerald-300'}`}>{selectedResult.detailsReleased?'🔒 Sperren':'📋 Freigeben'}</button><button onClick={()=>deleteResult(selectedResult.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-900/30 text-red-300 hover:bg-red-900/50 border border-red-500/30">🗑️</button></div></div></div></div>)}<div className="glass-card rounded-xl overflow-hidden" style={{maxHeight:"calc(100vh - 280px)",overflowY:"auto"}}><table className="w-full text-sm"><thead><tr style={{borderBottom:"1px solid rgba(255,255,255,0.08)"}}><th className="text-left px-3 py-2 text-xs text-slate-500">Benutzer</th><th className="text-left px-3 py-2 text-xs text-slate-500">Quiz</th><th className="text-left px-3 py-2 text-xs text-slate-500">Ergebnis</th><th className="text-left px-3 py-2 text-xs text-slate-500">Status</th><th className="text-left px-3 py-2 text-xs text-slate-500">Datum</th><th className="text-right px-3 py-2 text-xs text-slate-500">Aktion</th></tr></thead><tbody>{results.slice().reverse().map((r,idx)=>{const user=data.users.find(u=>u.id===r.userId);const quiz=data.quizzes.find(q=>q.id===r.quizId);return(<tr key={idx} className={`hover:bg-slate-800/30 transition-colors ${r.userMessage&&!r.detailsReleased?'bg-amber-900/30':''}`}><td className="px-3 py-1.5 text-white font-medium text-xs">{user?.name||'?'} {r.userMessage&&!r.detailsReleased&&'📬'}</td><td className="px-3 py-1.5 text-slate-400 text-xs">{quiz?.title||'?'}</td><td className="px-3 py-1.5"><span className={`font-bold text-xs ${r.score>=80?'text-green-400':'text-red-400'}`}>{r.score}%</span></td><td className="px-3 py-1.5"><span className={`px-1.5 py-0.5 rounded text-xs font-medium ${r.score>=80?'bg-green-900/20 text-green-400':'bg-red-900/20 text-red-400'}`}>{r.score>=80?'✓':'✗'}</span></td><td className="px-3 py-1.5 text-slate-500 text-xs">{new Date(r.completedAt).toLocaleDateString('de-DE')}</td><td className="px-3 py-1.5 text-right"><div className="flex justify-end gap-1"><button onClick={()=>setSelectedResult(r)} className="p-1 rounded hover:bg-white/5 text-slate-400 hover:text-emerald-400"><Icon name="eye" size={13}/></button><button onClick={()=>deleteResult(r.id)} className="p-1 rounded hover:bg-white/5 text-slate-400 hover:text-red-400"><Icon name="trash" size={13}/></button></div></td></tr>)})}{results.length===0&&<tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500 text-xs">Noch keine Ergebnisse</td></tr>}</tbody></table></div></div>)}
+
+        // ═══ WVL OBWOHL LOST TAB ═══
+        function WvlLostTab({appData,updateData,showNotification}){
+            const[entries,setEntries]=useState(appData.wvlLost||[]);
+            const[filter,setFilter]=useState('open');
+            const[search,setSearch]=useState('');
+            const[selected,setSelected]=useState({});
+            const[page,setPage]=useState(1);
+            const perPage=20;
+            const fileRef=React.useRef(null);
+
+            useEffect(()=>{setEntries(appData.wvlLost||[])},[appData.wvlLost]);
+
+            const importExcel=(e)=>{
+                const file=e.target.files[0];if(!file)return;
+                const reader=new FileReader();
+                reader.onload=(evt)=>{
+                    try{
+                        const wb=XLSX.read(evt.target.result,{type:'array'});
+                        const ws=wb.Sheets[wb.SheetNames[0]];
+                        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+                        if(rows.length<2){showNotification('Leere Datei','error');return}
+                        // Detect columns: Datum, ID, Kommentar, Status
+                        const hdr=rows[0].map(h=>String(h).trim().toLowerCase());
+                        let iDatum=hdr.findIndex(h=>h.includes('datum'));
+                        let iId=hdr.findIndex(h=>h==='id'||h.includes('leadid'));
+                        let iKommentar=hdr.findIndex(h=>h.includes('kommentar')||h.includes('bemerkung')||h.includes('grund'));
+                        let iStatus=-1;
+                        // Find status column: look for column with "Erledigt" values
+                        for(let c=0;c<rows[0].length;c++){
+                            const vals=rows.slice(1).map(r=>String(r[c]||'').trim().toLowerCase());
+                            if(vals.some(v=>v==='erledigt')){iStatus=c;break}
+                        }
+                        // Fallback: if no header row detected, assume col 0=Datum,1=ID,2=Kommentar
+                        if(iDatum===-1)iDatum=0;
+                        if(iId===-1)iId=1;
+                        if(iKommentar===-1)iKommentar=2;
+                        const imported=[];
+                        for(let i=1;i<rows.length;i++){
+                            const r=rows[i];
+                            if(!r||r.length<2)continue;
+                            let datum=r[iDatum]||'';
+                            // Handle Excel date serial numbers
+                            if(typeof datum==='number'){
+                                const d=XLSX.SSF.parse_date_code(datum);
+                                if(d)datum=String(d.d).padStart(2,'0')+'.'+String(d.m).padStart(2,'0')+'.'+d.y;
+                            }
+                            const id=String(r[iId]||'').trim();
+                            const kommentar=String(r[iKommentar]||'').trim();
+                            const status=iStatus>=0?String(r[iStatus]||'').trim():'';
+                            if(!id&&!kommentar)continue;
+                            imported.push({uid:Date.now()+'_'+i,datum:String(datum).trim(),leadId:id,kommentar,status:status.toLowerCase()==='erledigt'?'Erledigt':''});
+                        }
+                        // Merge: don't duplicate by leadId
+                        const existing=new Set((appData.wvlLost||[]).map(e=>e.leadId));
+                        let added=0;
+                        const merged=[...(appData.wvlLost||[])];
+                        imported.forEach(entry=>{
+                            if(!existing.has(entry.leadId)){merged.push(entry);existing.add(entry.leadId);added++}
+                        });
+                        updateData({...appData,wvlLost:merged});
+                        showNotification(added+' neue Einträge importiert');
+                    }catch(err){console.error(err);showNotification('Import-Fehler: '+err.message,'error')}
+                };
+                reader.readAsArrayBuffer(file);
+                e.target.value='';
+            };
+
+            const toggleErledigt=(uid)=>{
+                const updated=(appData.wvlLost||[]).map(e=>e.uid===uid?{...e,status:e.status==='Erledigt'?'':'Erledigt'}:e);
+                updateData({...appData,wvlLost:updated});
+            };
+
+            const toggleSelect=(uid)=>{setSelected(p=>({...p,[uid]:!p[uid]}))};
+            const selectAll=(list)=>{const s={};list.forEach(e=>{s[e.uid]=true});setSelected(s)};
+            const deselectAll=()=>setSelected({});
+
+            const exportSelected=()=>{
+                const toExport=entries.filter(e=>selected[e.uid]);
+                if(toExport.length===0){showNotification('Keine Einträge ausgewählt','error');return}
+                doExport(toExport);
+            };
+            const exportAll=()=>{
+                if(entries.length===0){showNotification('Keine Einträge','error');return}
+                doExport(entries);
+            };
+            const doExport=(data)=>{
+                const rows=data.map(e=>({Datum:e.datum,'ID':e.leadId,Kommentar:e.kommentar,'':'',Status:e.status}));
+                const ws=XLSX.utils.json_to_sheet(rows);
+                // Style status column green for Erledigt
+                const range=XLSX.utils.decode_range(ws['!ref']);
+                for(let r=1;r<=range.e.r;r++){
+                    const cell=ws[XLSX.utils.encode_cell({r,c:4})];
+                    if(cell&&cell.v==='Erledigt'){
+                        cell.s={fill:{fgColor:{rgb:'00B050'}},font:{color:{rgb:'FFFFFF'},bold:true}};
+                    }
+                }
+                // Set column widths
+                ws['!cols']=[{wch:12},{wch:10},{wch:80},{wch:5},{wch:12}];
+                const wb=XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb,ws,'WVL obwohl Lost');
+                XLSX.writeFile(wb,'wvl_obwohl_lost_export.xlsx');
+                showNotification(data.length+' Einträge exportiert');
+            };
+
+            const deleteSelected=()=>{
+                const ids=Object.keys(selected).filter(k=>selected[k]);
+                if(ids.length===0)return;
+                const updated=(appData.wvlLost||[]).filter(e=>!selected[e.uid]);
+                updateData({...appData,wvlLost:updated});
+                setSelected({});
+                showNotification(ids.length+' Einträge gelöscht');
+            };
+
+            // Filtering
+            let filtered=entries;
+            if(filter==='open')filtered=entries.filter(e=>e.status!=='Erledigt');
+            if(filter==='done')filtered=entries.filter(e=>e.status==='Erledigt');
+            if(search.trim()){
+                const s=search.toLowerCase();
+                filtered=filtered.filter(e=>(e.leadId||'').toLowerCase().includes(s)||(e.kommentar||'').toLowerCase().includes(s)||(e.datum||'').toLowerCase().includes(s));
+            }
+            const totalPages=Math.max(1,Math.ceil(filtered.length/perPage));
+            const paginated=filtered.slice((page-1)*perPage,page*perPage);
+            const selectedCount=Object.values(selected).filter(Boolean).length;
+
+            return(<div className="animate-fade-in">
+                <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
+                    <div>
+                        <h2 className="text-xl font-bold text-white">📋 WVL obwohl Lost</h2>
+                        <p className="text-xs text-slate-500">{entries.length} Gesamt · {entries.filter(e=>e.status!=='Erledigt').length} Offen · {entries.filter(e=>e.status==='Erledigt').length} Erledigt</p>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                        <input type="file" ref={fileRef} accept=".xlsx,.xls,.csv" onChange={importExcel} className="hidden"/>
+                        <button onClick={()=>fileRef.current?.click()} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-900/30 text-blue-300 border border-blue-500/30 hover:bg-blue-900/50"><Icon name="plus" size={14}/>Import Excel</button>
+                        <button onClick={exportAll} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-900/30 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-900/50"><Icon name="download" size={14}/>Export Alle</button>
+                        {selectedCount>0&&<button onClick={exportSelected} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-900/30 text-purple-300 border border-purple-500/30 hover:bg-purple-900/50"><Icon name="download" size={14}/>Export ({selectedCount})</button>}
+                        {selectedCount>0&&<button onClick={deleteSelected} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-900/30 text-red-300 border border-red-500/30 hover:bg-red-900/50"><Icon name="trash" size={14}/>Löschen ({selectedCount})</button>}
+                    </div>
+                </div>
+                {/* Filters */}
+                <div className="flex gap-2 mb-3 flex-wrap items-center">
+                    {['open','done','all'].map(f=>(<button key={f} onClick={()=>{setFilter(f);setPage(1)}} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${filter===f?'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40':'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'}`}>{f==='open'?'Offen':f==='done'?'Erledigt':'Alle'}</button>))}
+                    <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} placeholder="Suche (ID, Kommentar, Datum)..." className="ml-auto px-3 py-1 rounded-lg text-xs bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 w-64"/>
+                </div>
+                {/* Table */}
+                <div className="glass-card rounded-xl overflow-hidden" style={{maxHeight:'calc(100vh - 300px)',overflowY:'auto'}}>
+                    <table className="w-full text-sm">
+                        <thead><tr style={{borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+                            <th className="px-2 py-2 text-left"><input type="checkbox" checked={paginated.length>0&&paginated.every(e=>selected[e.uid])} onChange={()=>{if(paginated.every(e=>selected[e.uid]))deselectAll();else selectAll(paginated)}} className="accent-emerald-500"/></th>
+                            <th className="px-3 py-2 text-xs text-slate-500 text-left">DATUM</th>
+                            <th className="px-3 py-2 text-xs text-slate-500 text-left">ID</th>
+                            <th className="px-3 py-2 text-xs text-slate-500 text-left">KOMMENTAR</th>
+                            <th className="px-3 py-2 text-xs text-slate-500 text-center">STATUS</th>
+                            <th className="px-3 py-2 text-xs text-slate-500 text-center">AKTION</th>
+                        </tr></thead>
+                        <tbody>
+                            {paginated.map((entry,idx)=>(<tr key={entry.uid} className={`hover:bg-slate-800/30 transition-colors ${entry.status==='Erledigt'?'opacity-50':''}`} style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                                <td className="px-2 py-1.5"><input type="checkbox" checked={!!selected[entry.uid]} onChange={()=>toggleSelect(entry.uid)} className="accent-emerald-500"/></td>
+                                <td className="px-3 py-1.5 text-slate-400 text-xs font-mono whitespace-nowrap">{entry.datum}</td>
+                                <td className="px-3 py-1.5 text-white font-medium text-xs font-mono">{entry.leadId}</td>
+                                <td className="px-3 py-1.5 text-slate-300 text-xs" style={{maxWidth:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={entry.kommentar}>{entry.kommentar}</td>
+                                <td className="px-3 py-1.5 text-center">{entry.status==='Erledigt'?<span className="px-2 py-0.5 rounded text-xs font-bold" style={{background:'#00b050',color:'#fff'}}>Erledigt</span>:<span className="px-2 py-0.5 rounded text-xs text-slate-500">Offen</span>}</td>
+                                <td className="px-3 py-1.5 text-center"><button onClick={()=>toggleErledigt(entry.uid)} className={`px-2 py-0.5 rounded text-xs font-medium ${entry.status==='Erledigt'?'bg-amber-900/30 text-amber-300 hover:bg-amber-900/50':'bg-emerald-900/30 text-emerald-300 hover:bg-emerald-900/50'}`}>{entry.status==='Erledigt'?'↩ Zurücksetzen':'✓ Erledigt'}</button></td>
+                            </tr>))}
+                            {paginated.length===0&&<tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500 text-xs">{entries.length===0?'Noch keine Einträge. Bitte Excel importieren.':'Keine Einträge für diesen Filter.'}</td></tr>}
+                        </tbody>
+                    </table>
+                </div>
+                {/* Pagination */}
+                {totalPages>1&&<div className="flex items-center justify-center gap-1 mt-3">
+                    <button onClick={()=>setPage(1)} disabled={page===1} className="px-2 py-1 rounded text-xs text-slate-400 hover:text-white disabled:opacity-30">« Erste</button>
+                    <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} className="px-2 py-1 rounded text-xs text-slate-400 hover:text-white disabled:opacity-30">‹ Zurück</button>
+                    {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
+                        let p=page<=3?i+1:page>=totalPages-2?totalPages-4+i:page-2+i;
+                        if(p<1||p>totalPages)return null;
+                        return <button key={p} onClick={()=>setPage(p)} className={`w-7 h-7 rounded text-xs font-medium ${p===page?'bg-emerald-500 text-white':'text-slate-400 hover:text-white hover:bg-white/5'}`}>{p}</button>
+                    })}
+                    <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} className="px-2 py-1 rounded text-xs text-slate-400 hover:text-white disabled:opacity-30">Weiter ›</button>
+                    <button onClick={()=>setPage(totalPages)} disabled={page===totalPages} className="px-2 py-1 rounded text-xs text-slate-400 hover:text-white disabled:opacity-30">Letzte »</button>
+                    <span className="text-xs text-slate-500 ml-2">{filtered.length} Datensätze (Seite {page} von {totalPages})</span>
+                </div>}
+            </div>)
+        }
 
         // ═══ UPDATE MANAGEMENT TAB ═══
         function UpdateTab({showNotification}){
@@ -16332,12 +16520,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -16436,6 +16626,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
