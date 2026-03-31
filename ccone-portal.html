@@ -283,7 +283,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.2.6';
+        const APP_VERSION = '6.2.7';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -1454,7 +1454,7 @@ function getOrCreateSheet(){
         function AdminDashboard({currentUser,appData,updateData,refreshData,onLogout,showNotification,onSettings,onSwitchView,onOpenDashboard}){
             const[activeTab,setActiveTab]=useState('overview');
             const[editingQuiz,setEditingQuiz]=useState(null);
-            const menuItems=[{id:'overview',label:'Übersicht',icon:'chart'},{id:'users',label:'Benutzer',icon:'users'},{id:'quizzes',label:'Lernwelt',icon:'brain'},{id:'assignments',label:'Zielgruppen',icon:'target'},{id:'results',label:'Auswertungen',icon:'award'},{id:'coaching',label:'Coaching',icon:'headphones'},{id:'training',label:'Trainingscenter',icon:'book'},{id:'absence',label:'Abwesenheit',icon:'calendar'},{id:'termine',label:'Termine',icon:'clock'},{id:'spaetschicht',label:'Spätschicht',icon:'clock'},{id:'turnier',label:'Turnier',icon:'trophy'},{id:'news',label:'News',icon:'bell'},{id:'messages',label:'Nachrichten',icon:'chat'},{id:'rewards',label:'Belohnungen',icon:'trophy'},{id:'pausen',label:'Pausen',icon:'coffee'},{id:'storage',label:'Speicher',icon:'database'},{id:'wvlLost',label:'WVL Lost',icon:'target'},{id:'update',label:'Update',icon:'rocket'}];
+            const menuItems=[{id:'overview',label:'Übersicht',icon:'chart'},{id:'users',label:'Benutzer',icon:'users'},{id:'quizzes',label:'Lernwelt',icon:'brain'},{id:'assignments',label:'Zielgruppen',icon:'target'},{id:'results',label:'Auswertungen',icon:'award'},{id:'coaching',label:'Coaching',icon:'headphones'},{id:'training',label:'Trainingscenter',icon:'book'},{id:'absence',label:'Abwesenheit',icon:'calendar'},{id:'termine',label:'Termine',icon:'clock'},{id:'spaetschicht',label:'Spätschicht',icon:'clock'},{id:'turnier',label:'Turnier',icon:'trophy'},{id:'news',label:'News',icon:'bell'},{id:'messages',label:'Nachrichten',icon:'chat'},{id:'rewards',label:'Belohnungen',icon:'trophy'},{id:'pausen',label:'Pausen',icon:'coffee'},{id:'storage',label:'Speicher',icon:'database'},{id:'wvlLost',label:'WVL Lost',icon:'target'},{id:'datenschutz',label:'Datenschutz',icon:'eye'},{id:'update',label:'Update',icon:'rocket'}];
             // Filter menu items by role/permissions
             const visibleMenuItems=currentUser.role==='admin'?menuItems:menuItems.filter(m=>(currentUser.adminTabs||[]).includes(m.id));
             const canSwitchView=['admin','teamleiter','standardbenutzer'].includes(currentUser.role);
@@ -1576,6 +1576,7 @@ function getOrCreateSheet(){
                         {activeTab==='rewards'&&<RewardsTab appData={filteredData} updateData={updateData} showNotification={showNotification}/>}
                         {activeTab==='storage'&&<StorageTab appData={appData} updateData={updateData} showNotification={showNotification} api={api}/>}
                         {activeTab==='wvlLost'&&<WvlLostTab appData={filteredData} updateData={updateData} showNotification={showNotification}/>}
+                        {activeTab==='datenschutz'&&<DatenschutzTab showNotification={showNotification}/>}
                         {activeTab==='update'&&<UpdateTab showNotification={showNotification}/>}
                     </div>
                 </div>
@@ -3089,7 +3090,7 @@ function getOrCreateSheet(){
             const[filter,setFilter]=useState('all');
             const ROLES=[{id:'admin',label:'👑 Admin',color:'#7c3aed',desc:'Voller Zugriff'},{id:'teamleiter',label:'🎖️ Teamleiter',color:'#f59e0b',desc:'Admin + Agent, eingeschränkt'},{id:'standardbenutzer',label:'👤 Standardbenutzer',color:'#3b82f6',desc:'Admin + Agent, eingeschränkt'},{id:'user',label:'🎯 Agent',color:'#10b981',desc:'Nur Agent-Oberfläche'}];
             const STANDORTE=[{id:'',label:'— Kein Standort'},{id:'berlin',label:'📍 Berlin'},{id:'chemnitz',label:'📍 Chemnitz'}];
-            const ADMIN_TABS=[{id:'overview',label:'📊 Übersicht'},{id:'users',label:'👥 Benutzer'},{id:'quizzes',label:'🧠 Lernwelt'},{id:'assignments',label:'🎯 Zielgruppen'},{id:'results',label:'📊 Auswertungen'},{id:'coaching',label:'🎧 Coaching'},{id:'training',label:'📚 Trainingscenter'},{id:'absence',label:'📅 Abwesenheit'},{id:'termine',label:'⏰ Termine'},{id:'spaetschicht',label:'🌙 Spätschicht'},{id:'turnier',label:'🏆 Turnier'},{id:'news',label:'📰 News'},{id:'messages',label:'💬 Nachrichten'},{id:'rewards',label:'🎁 Belohnungen'},{id:'pausen',label:'☕ Pausen'},{id:'storage',label:'💾 Speicher'},{id:'wvlLost',label:'📋 WVL Lost'},{id:'update',label:'🚀 Update'}];
+            const ADMIN_TABS=[{id:'overview',label:'📊 Übersicht'},{id:'users',label:'👥 Benutzer'},{id:'quizzes',label:'🧠 Lernwelt'},{id:'assignments',label:'🎯 Zielgruppen'},{id:'results',label:'📊 Auswertungen'},{id:'coaching',label:'🎧 Coaching'},{id:'training',label:'📚 Trainingscenter'},{id:'absence',label:'📅 Abwesenheit'},{id:'termine',label:'⏰ Termine'},{id:'spaetschicht',label:'🌙 Spätschicht'},{id:'turnier',label:'🏆 Turnier'},{id:'news',label:'📰 News'},{id:'messages',label:'💬 Nachrichten'},{id:'rewards',label:'🎁 Belohnungen'},{id:'pausen',label:'☕ Pausen'},{id:'storage',label:'💾 Speicher'},{id:'wvlLost',label:'📋 WVL Lost'},{id:'datenschutz',label:'🔒 Datenschutz'},{id:'update',label:'🚀 Update'}];
             const AGENT_PERMS=[{id:'agent',label:'🎯 Agent'},{id:'coaching',label:'🎧 Coaching'},{id:'results',label:'📊 Ergebnisse'},{id:'training',label:'📚 Training'},{id:'unoHost',label:'🎮 UNO Host'}];
             const handleSubmit=()=>{if(!form.username||!form.password||!form.name)return;onAdd(form);setForm({username:'',password:'',name:'',role:'user',standort:'',permissions:['agent'],adminTabs:[]});setShowForm(false)};
             const startEdit=(user)=>{setEditingUser({...user,permissions:user.permissions||['agent'],adminTabs:user.adminTabs||[],standort:user.standort||''})};
@@ -3315,6 +3316,108 @@ function getOrCreateSheet(){
         }
 
         function ResultsTab({results,data,exportResults,updateData,appData,showNotification}){const[selectedResult,setSelectedResult]=useState(null);const[feedbackText,setFeedbackText]=useState('');const sendFeedback=(result)=>{if(!feedbackText.trim()){showNotification('Bitte Nachricht eingeben','error');return}const updatedResult={...result,feedback:feedbackText,feedbackAt:new Date().toISOString()};const updatedResults=appData.results.map(r=>r.id===result.id?updatedResult:r);updateData({...appData,results:updatedResults});setFeedbackText('');setSelectedResult(null);showNotification('Feedback gesendet!')};const toggleDetailsRelease=(result)=>{const updatedResults=appData.results.map(r=>r.id===result.id?{...r,detailsReleased:!r.detailsReleased}:r);updateData({...appData,results:updatedResults});showNotification(result.detailsReleased?'Auswertung gesperrt':'Auswertung freigegeben!')};const deleteResult=async(resultId)=>{if(!confirm('Auswertung wirklich löschen? Dies kann nicht rückgängig gemacht werden.'))return;const updatedResults=appData.results.filter(r=>r.id!==resultId);updateData({...appData,results:updatedResults});setSelectedResult(null);try{const rm=appData.storageConfig?.rangeMap;const resCell=rm?.results?'A'+rm.results.start:'A1';if(resCell!=='A1'){await api.writeCells({[resCell]:JSON.stringify(updatedResults)})}}catch(e){console.error('writeCells fallback:',e)}showNotification('Auswertung gelöscht')};return(<div className="animate-fade-in"><div className="flex justify-between items-center mb-4"><div><h2 className="text-xl font-bold text-white">📊 Auswertungen</h2><p className="text-xs text-slate-500">{results.length} Ergebnisse</p></div><button onClick={exportResults} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-900/30 text-emerald-300 rounded-lg hover:bg-emerald-900/50 border border-emerald-500/30 font-medium text-sm"><Icon name="download" size={14}/>Export</button></div>{results.filter(r=>r.userMessage&&!r.detailsReleased).length>0&&(<div className="mb-3 bg-amber-900/30 border border-amber-500/30 rounded-xl p-3"><h3 className="font-bold text-amber-200 text-sm mb-2">📬 Freigabe-Anfragen</h3><div className="space-y-1.5">{results.filter(r=>r.userMessage&&!r.detailsReleased).map(r=>{const user=data.users.find(u=>u.id===r.userId);const quiz=data.quizzes.find(q=>q.id===r.quizId);return(<div key={r.id} className="flex items-center justify-between bg-slate-800/50 rounded-lg p-2"><div><p className="text-sm font-medium text-white">{user?.name}: "{r.userMessage}"</p><p className="text-xs text-slate-500">{quiz?.title} • {r.score}%</p></div><button onClick={()=>setSelectedResult(r)} className="px-2 py-0.5 rounded text-xs font-bold" style={{background:"rgba(16,185,129,0.2)",color:"#34d399"}}>Ansehen</button></div>)})}</div></div>)}{selectedResult&&(<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-auto animate-fade-in"><div className="p-4 border-b border-slate-700"><div className="flex justify-between items-start"><div><h3 className="text-lg font-bold text-white">{data.users.find(u=>u.id===selectedResult.userId)?.name}</h3><p className="text-slate-400">{data.quizzes.find(q=>q.id===selectedResult.quizId)?.title}</p></div><button onClick={()=>setSelectedResult(null)} className="text-slate-400 hover:text-slate-600"><Icon name="x" size={24}/></button></div><div className="flex items-center gap-4 mt-4"><span className={`text-2xl font-bold ${selectedResult.score>=80?'text-green-400':'text-red-400'}`}>{selectedResult.score}%</span><span className={`px-3 py-1 rounded-full text-sm font-medium ${selectedResult.score>=80?'bg-green-100 text-green-700':'bg-red-900/30 text-red-300'}`}>{selectedResult.score>=80?'✅ Bestanden':'❌ Nicht bestanden'}</span></div></div>{selectedResult.userMessage&&(<div className="p-4 border-b border-slate-700 bg-amber-900/30"><h4 className="font-semibold text-amber-200 mb-2">💬 Nachricht vom Agent:</h4><p className="text-amber-900">"{selectedResult.userMessage}"</p></div>)}<div className="p-4 border-b border-slate-700"><h4 className="font-bold text-white text-sm mb-2">📋 Antworten im Detail</h4><div className="space-y-2 max-h-64 overflow-auto">{selectedResult.answers?.map((answer,idx)=>{const quiz=data.quizzes.find(q=>q.id===selectedResult.quizId);const question=quiz?.questions[idx];if(!question)return null;const isCorrect=answer.selected===answer.correct;return(<div key={idx} className={`p-3 rounded-lg text-sm ${isCorrect?'bg-green-900/30':'bg-red-900/30'}`}><div className="flex items-start gap-2"><span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs ${isCorrect?'bg-green-900/300':'bg-red-900/300'}`}>{isCorrect?'✓':'✗'}</span><div><p className="font-medium text-slate-700">{idx+1}. {question.question}</p><p className="text-slate-400">Antwort: <span className={isCorrect?'text-green-700':'text-red-700'}>{question.options[answer.selected]}</span></p>{!isCorrect&&<p className="text-green-700">Richtig: {question.options[answer.correct]}</p>}</div></div></div>)})}</div></div><div className="p-4"><h4 className="font-bold text-white text-sm mb-2">💬 Nachricht an Agent</h4><textarea value={feedbackText} onChange={(e)=>setFeedbackText(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-600 bg-slate-800/80 text-white resize-none text-xs" rows={2} placeholder="Feedback..."/><div className="flex gap-2 mt-3 flex-wrap"><button onClick={()=>sendFeedback(selectedResult)} className="px-3 py-1.5 rounded-lg font-bold text-sm" style={{background:"linear-gradient(135deg,#10b981,#059669)",color:"#fff"}}>📤 Senden</button><button onClick={()=>toggleDetailsRelease(selectedResult)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${selectedResult.detailsReleased?'bg-red-900/30 text-red-300':'bg-emerald-900/30 text-emerald-300'}`}>{selectedResult.detailsReleased?'🔒 Sperren':'📋 Freigeben'}</button><button onClick={()=>deleteResult(selectedResult.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-900/30 text-red-300 hover:bg-red-900/50 border border-red-500/30">🗑️</button></div></div></div></div>)}<div className="glass-card rounded-xl overflow-hidden" style={{maxHeight:"calc(100vh - 280px)",overflowY:"auto"}}><table className="w-full text-sm"><thead><tr style={{borderBottom:"1px solid rgba(255,255,255,0.08)"}}><th className="text-left px-3 py-2 text-xs text-slate-500">Benutzer</th><th className="text-left px-3 py-2 text-xs text-slate-500">Quiz</th><th className="text-left px-3 py-2 text-xs text-slate-500">Ergebnis</th><th className="text-left px-3 py-2 text-xs text-slate-500">Status</th><th className="text-left px-3 py-2 text-xs text-slate-500">Datum</th><th className="text-right px-3 py-2 text-xs text-slate-500">Aktion</th></tr></thead><tbody>{results.slice().reverse().map((r,idx)=>{const user=data.users.find(u=>u.id===r.userId);const quiz=data.quizzes.find(q=>q.id===r.quizId);return(<tr key={idx} className={`hover:bg-slate-800/30 transition-colors ${r.userMessage&&!r.detailsReleased?'bg-amber-900/30':''}`}><td className="px-3 py-1.5 text-white font-medium text-xs">{user?.name||'?'} {r.userMessage&&!r.detailsReleased&&'📬'}</td><td className="px-3 py-1.5 text-slate-400 text-xs">{quiz?.title||'?'}</td><td className="px-3 py-1.5"><span className={`font-bold text-xs ${r.score>=80?'text-green-400':'text-red-400'}`}>{r.score}%</span></td><td className="px-3 py-1.5"><span className={`px-1.5 py-0.5 rounded text-xs font-medium ${r.score>=80?'bg-green-900/20 text-green-400':'bg-red-900/20 text-red-400'}`}>{r.score>=80?'✓':'✗'}</span></td><td className="px-3 py-1.5 text-slate-500 text-xs">{new Date(r.completedAt).toLocaleDateString('de-DE')}</td><td className="px-3 py-1.5 text-right"><div className="flex justify-end gap-1"><button onClick={()=>setSelectedResult(r)} className="p-1 rounded hover:bg-white/5 text-slate-400 hover:text-emerald-400"><Icon name="eye" size={13}/></button><button onClick={()=>deleteResult(r.id)} className="p-1 rounded hover:bg-white/5 text-slate-400 hover:text-red-400"><Icon name="trash" size={13}/></button></div></td></tr>)})}{results.length===0&&<tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500 text-xs">Noch keine Ergebnisse</td></tr>}</tbody></table></div></div>)}
+
+        // ═══ DATENSCHUTZ TAB ═══
+        function DatenschutzTab({showNotification}){
+            const[rawText,setRawText]=useState('');
+            const[extracted,setExtracted]=useState([]);
+            const[processed,setProcessed]=useState(false);
+
+            const extractNumbers=()=>{
+                if(!rawText.trim()){showNotification('Bitte Daten einfügen','error');return}
+                // Extract all sequences of 6-8 digits that look like Kundenummern
+                const matches=rawText.match(/\b\d{6,8}\b/g)||[];
+                // Deduplicate
+                const unique=[...new Set(matches)];
+                setExtracted(unique);
+                setProcessed(true);
+                if(unique.length===0)showNotification('Keine Kundenummern gefunden','error');
+                else showNotification(unique.length+' Kundenummer'+(unique.length!==1?'n':'')+' extrahiert');
+            };
+
+            const exportCSV=()=>{
+                if(extracted.length===0){showNotification('Keine Daten zum Exportieren','error');return}
+                // Build CSV with UTF-8 BOM
+                const BOM='\uFEFF';
+                const header='Kundenummer';
+                const rows=extracted.map(n=>n);
+                const csv=BOM+header+'\n'+rows.join('\n')+'\n';
+                const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement('a');
+                a.href=url;
+                a.download='datenschutz_kundenummern_'+new Date().toISOString().slice(0,10)+'.csv';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showNotification(extracted.length+' Datensätze als CSV exportiert');
+            };
+
+            const reset=()=>{setRawText('');setExtracted([]);setProcessed(false)};
+
+            return(<div className="animate-fade-in">
+                <div className="flex justify-between items-center mb-4">
+                    <div>
+                        <h2 className="text-xl font-bold text-white">🔒 Datenschutz</h2>
+                        <p className="text-xs text-slate-500">Kundenummern aus gemischten Daten extrahieren und als CSV UTF-8 exportieren</p>
+                    </div>
+                </div>
+
+                <div className="grid gap-4" style={{gridTemplateColumns:processed&&extracted.length>0?'1fr 1fr':'1fr'}}>
+                    {/* Left: Input area */}
+                    <div className="glass-card rounded-xl p-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="text-sm font-bold text-white">📋 Daten einfügen</h3>
+                            {rawText&&<button onClick={reset} className="text-xs text-slate-400 hover:text-red-400">Zurücksetzen</button>}
+                        </div>
+                        <p className="text-xs text-slate-500 mb-2">Kopiere die Daten hier rein — Nummern, Namen mit Nummern, ganze Tabellen. Die Kundenummern werden automatisch erkannt.</p>
+                        <textarea
+                            value={rawText}
+                            onChange={e=>{setRawText(e.target.value);setProcessed(false)}}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800/80 text-white text-xs font-mono p-3 resize-none placeholder-slate-600"
+                            rows={16}
+                            placeholder={"Beispiel:\n1589595\nJürgen Schimmer\t1589270\nHorts Röder\t1572830\nKundenummer\n1586684\n1577728\n..."}
+                        />
+                        <div className="flex gap-2 mt-3">
+                            <button onClick={extractNumbers} className="flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-bold" style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff'}}>
+                                <Icon name="check" size={14}/>Kundenummern extrahieren
+                            </button>
+                            {processed&&extracted.length>0&&<button onClick={exportCSV} className="flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-bold bg-blue-900/30 text-blue-300 border border-blue-500/30 hover:bg-blue-900/50">
+                                <Icon name="download" size={14}/>CSV UTF-8 Export
+                            </button>}
+                        </div>
+                    </div>
+
+                    {/* Right: Result */}
+                    {processed&&extracted.length>0&&<div className="glass-card rounded-xl p-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="text-sm font-bold text-white">✅ Ergebnis</h3>
+                            <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{background:'rgba(16,185,129,0.2)',color:'#34d399'}}>{extracted.length} Datensätze</span>
+                                <button onClick={exportCSV} className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-blue-900/30 text-blue-300 border border-blue-500/30 hover:bg-blue-900/50">
+                                    <Icon name="download" size={12}/>CSV
+                                </button>
+                            </div>
+                        </div>
+                        <div className="rounded-lg overflow-hidden border border-slate-700" style={{maxHeight:'calc(100vh - 340px)',overflowY:'auto'}}>
+                            <table className="w-full text-sm">
+                                <thead><tr style={{borderBottom:'1px solid rgba(255,255,255,0.08)',position:'sticky',top:0,background:'rgba(15,23,42,0.95)',zIndex:1}}>
+                                    <th className="px-3 py-2 text-xs text-slate-500 text-left w-12">#</th>
+                                    <th className="px-3 py-2 text-xs text-slate-500 text-left">Kundenummer</th>
+                                </tr></thead>
+                                <tbody>{extracted.map((num,i)=>(
+                                    <tr key={i} className="hover:bg-slate-800/30" style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                                        <td className="px-3 py-1 text-xs text-slate-600">{i+1}</td>
+                                        <td className="px-3 py-1 text-white font-mono text-xs">{num}</td>
+                                    </tr>
+                                ))}</tbody>
+                            </table>
+                        </div>
+                    </div>}
+                </div>
+            </div>)
+        }
 
         // ═══ WVL OBWOHL LOST TAB ═══
         function WvlLostTab({appData,updateData,showNotification}){
