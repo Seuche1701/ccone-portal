@@ -283,7 +283,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.2.8';
+        const APP_VERSION = '6.2.9';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14810,6 +14810,26 @@ function TrainingAdmin({ supabase }) {
     if (quizView) loadQuestions(quizView);
   }
 
+  async function resetAllQuestions(presId) {
+    const pid = presId || quizView;
+    if (!pid) return;
+    const { error } = await supabase.from("training_questions").delete().eq("presentation_id", pid);
+    if (!error) { setQuestions([]); alert('Alle Fragen gelöscht'); }
+    else alert('Fehler beim Löschen');
+  }
+
+  function resetAbschlusstest(presId) {
+    const pid = presId || abschlussPresId;
+    if (!pid) return;
+    const updated = {...savedAbschluss};
+    delete updated[pid];
+    setSavedAbschluss(updated);
+    localStorage.setItem('ccone_abschluss', JSON.stringify(updated));
+    setAbschlussSlides([]);
+    setAbschlussTriggerSlide(null);
+    alert('Abschlusstest zurückgesetzt');
+  }
+
   async function generateQuestionsAI(pres) {
     const key = localStorage.getItem('groq-api-key')||'';
     if (!key) { setShowApiKey(true); return; }
@@ -15236,10 +15256,16 @@ function TrainingAdmin({ supabase }) {
             <button onClick={()=>setAbschlusstest(false)} style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
             <span style={{color:'#fff',fontWeight:800,fontSize:16}}>🎓 Abschlusstest: {absPres?.title}</span>
           </div>
+          <div style={{display:'flex',gap:8}}>
+          {savedAbschluss[abschlussPresId]&&<button onClick={()=>{if(confirm('Abschlusstest für diese Schulung wirklich komplett zurücksetzen?'))resetAbschlusstest()}}
+            style={{background:'rgba(239,68,68,0.1)',color:'#f87171',border:'1px solid rgba(239,68,68,0.3)',borderRadius:8,padding:'8px 14px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+            🗑️ Zurücksetzen
+          </button>}
           <button onClick={saveAbschlusstest} disabled={totalQ===0}
             style={{background:totalQ?'linear-gradient(135deg,#22c55e,#16a34a)':'rgba(255,255,255,0.05)',color:totalQ?'#fff':'#475569',border:'none',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13,cursor:totalQ?'pointer':'not-allowed'}}>
             💾 Speichern ({totalQ} Fragen)
           </button>
+          </div>
         </div>
         <div style={{background:'#1e293b',border:'1px solid #334155',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:12}}>
           <span style={{color:'#94a3b8',fontSize:13}}>🔓 Test freischalten ab Folie:</span>
@@ -15812,6 +15838,10 @@ function TrainingAdmin({ supabase }) {
               style={{background:'linear-gradient(135deg,#7c3aed,#6d28d9)',color:'#fff',border:'none',borderRadius:8,padding:'6px 14px',fontSize:13,fontWeight:700,cursor:'pointer',opacity:genLoading?0.6:1}}>
               {genLoading?(genProgress||'KI laeuft...'):'✨ KI-Fragen generieren'}
             </button>
+            {questions.length>0&&<button onClick={()=>{if(confirm('Wirklich ALLE '+questions.length+' Fragen für diese Schulung löschen?'))resetAllQuestions()}}
+              style={{background:'rgba(239,68,68,0.1)',color:'#f87171',border:'1px solid rgba(239,68,68,0.3)',borderRadius:8,padding:'6px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+              🗑️ Alle löschen ({questions.length})
+            </button>}
           </div>
         </div>
         {showSlideSelector&&qPres&&(
