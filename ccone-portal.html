@@ -283,7 +283,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.3.0';
+        const APP_VERSION = '6.3.1';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14722,9 +14722,21 @@ function TrainingAdmin({ supabase }) {
   const [savedAbschluss, setSavedAbschluss] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('ccone_abschluss')||'{}'); } catch(e) { return {}; }
   });
+  // Load from Supabase if localStorage is empty
+  React.useEffect(() => {
+    if (Object.keys(savedAbschluss).length === 0) {
+      supabase.from('ccone_data').select('value').eq('key','abschlusstest_config').maybeSingle()
+        .then(({data}) => {
+          if (data?.value && Object.keys(data.value).length > 0) {
+            setSavedAbschluss(data.value);
+            localStorage.setItem('ccone_abschluss', JSON.stringify(data.value));
+          }
+        });
+    }
+  }, []);
   const [formQ, setFormQ] = React.useState({presentation_id:'',slide_index:0,question:'',options:['','','',''],correct_index:0});
   const [showApiKey, setShowApiKey] = React.useState(false);
-  const [apiKeyInput, setApiKeyInput] = React.useState('');
+  const [apiKeyInput, setApiKeyInput] = React.useState(localStorage.getItem('groq-api-key')||'');
   const [genError, setGenError] = React.useState('');
   const [selectedSlides, setSelectedSlides] = React.useState([]); // [] = alle ersten 5
   const [showSlideSelector, setShowSlideSelector] = React.useState(false);
@@ -14828,6 +14840,7 @@ function TrainingAdmin({ supabase }) {
     setAbschlussSlides([]);
     setAbschlussTriggerSlide(null);
     alert('Abschlusstest zurückgesetzt');
+    try { supabase.from('ccone_data').upsert({key:'abschlusstest_config',value:updated}); } catch(e) {}
   }
 
   async function generateQuestionsAI(pres) {
@@ -14923,6 +14936,8 @@ function TrainingAdmin({ supabase }) {
   function saveAbschlusstest() {
     const updated = {...savedAbschluss,[abschlussPresId]:{slides:abschlussSlides,triggerSlide:abschlussTriggerSlide}};
     setSavedAbschluss(updated); localStorage.setItem('ccone_abschluss',JSON.stringify(updated)); setAbschlusstest(false);
+    // Persist to Supabase
+    try { supabase.from('ccone_data').upsert({key:'abschlusstest_config',value:updated}); } catch(e) { console.warn('Abschluss Supabase save:',e); }
   }
   async function generateAbschlussSlideAI(slideIndex) {
     const key = localStorage.getItem('groq-api-key')||'';
@@ -14949,28 +14964,55 @@ function TrainingAdmin({ supabase }) {
     setAbschlussBusy(null);
   }
   async function sendNextAbschlussQuestion(queue, idx) {
+    // Legacy - no longer used for sequential sending
     if (idx >= queue.length) {
       await supabase.from("training_sessions").update({quiz_active:false,quiz_question:null}).eq("id",sessionRef.current);
       setSession(prev=>({...prev,quiz_active:false,quiz_question:null}));
       setAbschlussRunning(false); return;
     }
-    const q = queue[idx];
-    await supabase.from("training_sessions").update({quiz_active:true,
-      quiz_question:{id:q.id,question:q.question,options:q.options,correct_index:q.correct_index}
-    }).eq("id",sessionRef.current);
-    setSession(prev=>({...prev,quiz_active:true,quiz_question:{id:q.id,question:q.question,options:q.options,correct_index:q.correct_index}}));
-    setQuizAnswers([]); setAbschlussIdx(idx);
-    // No separate channel needed - global listener in useEffect handles all answers
   }
   async function startAbschlusstest(presId) {
     const saved = savedAbschluss[presId||abschlussPresId];
     const slides = saved?.slides || abschlussSlides;
-    const queue = slides.flatMap(sl=>(sl.questions||[])).filter(q=>q?.question);
-    if (!queue.length) return;
+    // Collect questions from Abschlusstest builder (localStorage/Supabase)
+    let queue = slides.flatMap(sl=>(sl.questions||[])).filter(q=>q?.question);
+    // ALSO collect Auffrischungsrunde questions from training_questions table
+    // For playlist: collect from all presentations
+    const presIds = [];
+    if (session?.playlist_id) {
+      const pl = playlists.find(p=>p.id===session.playlist_id);
+      if (pl) pl.presentations.forEach(item => presIds.push(item.presId));
+    }
+    if (!presIds.length) presIds.push(presId || abschlussPresId);
+    for (const pid of presIds) {
+      try {
+        const {data:dbQs} = await supabase.from("training_questions").select("*").eq("presentation_id", pid);
+        if (dbQs?.length) {
+          // Add DB questions that aren't already in queue (by question text)
+          const existing = new Set(queue.map(q=>q.question));
+          dbQs.forEach(dq => {
+            if (!existing.has(dq.question)) {
+              queue.push({id:dq.id, question:dq.question, options:dq.options, correct_index:dq.correct_index, slide_index:dq.slide_index, source:'auffrischung'});
+            }
+          });
+        }
+      } catch(e) { console.warn('Load training_questions for',pid,e); }
+    }
+    if (!queue.length) { alert('Keine Fragen vorhanden. Erstelle zuerst Auffrischungsfragen oder Abschlusstest-Fragen.'); return; }
     setAbschlussQueue(queue); setAbschlussRunning(true); setAbschlusstest(false);
-    await sendNextAbschlussQuestion(queue, 0);
+    // Push all questions at once as abschlusstest package
+    const pkg = { type:'abschlusstest', questions: queue, presentation_id: presId||abschlussPresId, started_at: new Date().toISOString() };
+    await supabase.from("training_sessions").update({ quiz_active:true, quiz_question: pkg }).eq("id", sessionRef.current);
+    setSession(prev=>({...prev, quiz_active:true, quiz_question: pkg}));
+    setQuizAnswers([]);
+  }
+  async function stopAbschlusstest() {
+    await supabase.from("training_sessions").update({quiz_active:false,quiz_question:null}).eq("id",sessionRef.current);
+    setSession(prev=>({...prev,quiz_active:false,quiz_question:null}));
+    setAbschlussRunning(false); setAbschlussQueue([]); setAbschlussIdx(0);
   }
   async function nextAbschlussQuestion() {
+    // Legacy compatibility
     await sendNextAbschlussQuestion(abschlussQueue, abschlussIdx+1);
   }
 
@@ -15049,6 +15091,7 @@ function TrainingAdmin({ supabase }) {
     setSession(data); setSelectedPres(firstPres); setCurrentSlide(1);
     setPlaylistIndex(0); sessionRef.current = data.id;
     setStartTimePicker(null); setStartTimeVal('');
+    loadQuestions(firstPres.id);
     setView("present");
   }
 
@@ -15065,6 +15108,7 @@ function TrainingAdmin({ supabase }) {
     }).eq("id", sessionRef.current);
     setSelectedPres(nextPres); setCurrentSlide(1); setPlaylistIndex(nextIdx);
     setSession(prev => ({...prev, presentation: nextPres.id, slide_index: 1, playlist_index: nextIdx}));
+    loadQuestions(nextPres.id);
   }
 
   async function loadActiveSession() {
@@ -15124,6 +15168,7 @@ function TrainingAdmin({ supabase }) {
     sessionRef.current = data.id;
     setStartTimePicker(null);
     setStartTimeVal('');
+    loadQuestions(pres.id);
     setView("present");
   }
 
@@ -15200,7 +15245,7 @@ function TrainingAdmin({ supabase }) {
       return sum + (saved?.slides||[]).reduce((s,sl)=>s+(sl.questions?.length||0),0);
     }, 0);
     return (
-      <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)',padding:20}}>
+      <div style={{background:'#0a0f1a',padding:20}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             <button onClick={()=>setPlaylistAbschluss(null)} style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
@@ -15250,7 +15295,7 @@ function TrainingAdmin({ supabase }) {
     const absPres = presentations.find(p=>p.id===abschlussPresId);
     const totalQ = abschlussSlides.reduce((s,sl)=>s+sl.questions.length,0);
     return (
-      <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)',padding:20}}>
+      <div style={{background:'#0a0f1a',padding:20}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             <button onClick={()=>setAbschlusstest(false)} style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
@@ -15323,7 +15368,7 @@ function TrainingAdmin({ supabase }) {
     const correct = allQuizAnswers.filter(a=>a.is_correct).length;
     const pct = total?Math.round(correct/total*100):0;
     return (
-      <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)',padding:20}}>
+      <div style={{background:'#0a0f1a',padding:20}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
           <div>
             <div style={{color:'#fff',fontWeight:800,fontSize:18}}>📊 Auswertung: {presTitle}</div>
@@ -15398,7 +15443,7 @@ function TrainingAdmin({ supabase }) {
         [arr[idx],arr[ni]]=[arr[ni],arr[idx]]; setPlaylistItems(arr);
       };
       return (
-        <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)',padding:20}}>
+        <div style={{background:'#0a0f1a',padding:20}}>
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
             <button onClick={()=>{setPlaylistView(false);setEditingPlaylist(null);setPlaylistTitle('');setPlaylistItems([]);}}
               style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
@@ -15471,7 +15516,7 @@ function TrainingAdmin({ supabase }) {
 
     // Main list
     return (
-      <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)'}} className="p-5">
+      <div style={{background:'#0a0f1a'}} className="p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-white font-bold text-lg">Trainingscenter</h2>
@@ -15690,7 +15735,7 @@ function TrainingAdmin({ supabase }) {
     const isNew = editingQ === 'new' || !editingQ?.id;
     const backView = quizView ? 'questions' : 'list';
     return (
-      <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)',padding:20,maxWidth:600,margin:'0 auto'}}>
+      <div style={{background:'#0a0f1a',padding:20,maxWidth:600,margin:'0 auto'}}>
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:24}}>
           <button onClick={()=>{setEditingQ(null);setView(backView);}} style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
           <span style={{color:'#fff',fontWeight:700,fontSize:16}}>{isNew?'➕ Neue Frage':'✏️ Frage bearbeiten'}</span>
@@ -15747,7 +15792,7 @@ function TrainingAdmin({ supabase }) {
     if (slideModal) {
       const slideQs = (slideGroups[slideModal.slideIndex]||[]);
       return (
-        <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)',padding:20,maxWidth:640,margin:'0 auto'}}>
+        <div style={{background:'#0a0f1a',padding:20,maxWidth:640,margin:'0 auto'}}>
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
             <button onClick={()=>{setSlideModal(null);setSlideModalMode(null);setSlideGenError('');}}
               style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
@@ -15818,7 +15863,7 @@ function TrainingAdmin({ supabase }) {
     }
 
     return (
-      <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)',padding:20}}>
+      <div style={{background:'#0a0f1a',padding:20}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             <button onClick={()=>{setView("list");setQuizView(null);setQuestions([]);}} style={{color:'#94a3b8',background:'none',border:'none',cursor:'pointer',fontSize:14}}>← Zurück</button>
@@ -15919,7 +15964,7 @@ function TrainingAdmin({ supabase }) {
 
   if (view === "upload") {
     return (
-      <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)'}}>
+      <div style={{background:'#0a0f1a'}}>
         <div className="p-5 border-b border-slate-700 flex items-center gap-3">
           <button onClick={() => setView("list")} className="text-slate-400 hover:text-white text-sm transition-colors">← Zurück</button>
           <span className="text-slate-600">|</span>
@@ -16023,15 +16068,30 @@ function TrainingAdmin({ supabase }) {
                   className={`w-full rounded-lg overflow-hidden border transition-all ${
                     idx === currentSlide ? "border-orange-500 ring-1 ring-orange-500" : "border-slate-700 hover:border-slate-500"
                   }`}
-                >
+                >{(() => {
+                    const hasQuiz = questions.some(q => q.presentation_id === selectedPres.id && q.slide_index === idx);
+                    const absData = savedAbschluss[selectedPres.id];
+                    const hasAbschluss = absData?.slides?.some(s => s.slideIndex === idx && s.questions?.length);
+                    const isTrigger = absData?.triggerSlide === idx;
+                    return (<>
+                  <div style={{position:'relative'}}>
                   <SlideImage
                     supabase={supabase} presId={selectedPres.id} index={idx}
                     alt={`Folie ${idx}`}
                     style={{width:"100%",aspectRatio:"16/9",objectFit:"cover"}}
                   />
-                  <div className={`px-1.5 py-0.5 bg-slate-800 text-xs text-left truncate ${idx === currentSlide ? "text-orange-400" : "text-slate-500"}`}>
-                    {idx}
+                  {(hasQuiz||hasAbschluss)&&<div style={{position:'absolute',top:2,right:2,display:'flex',gap:2}}>
+                    {hasQuiz&&<span style={{background:'rgba(59,130,246,0.85)',borderRadius:4,padding:'1px 3px',fontSize:9,lineHeight:1}} title="Auffrischungsfrage">❓</span>}
+                    {hasAbschluss&&<span style={{background:'rgba(249,115,22,0.85)',borderRadius:4,padding:'1px 3px',fontSize:9,lineHeight:1}} title="Abschlusstest-Frage">🎓</span>}
+                  </div>}
+                  {isTrigger&&<div style={{position:'absolute',bottom:1,left:1,background:'rgba(249,115,22,0.9)',borderRadius:3,padding:'0 3px',fontSize:8,color:'#fff',fontWeight:700}} title="Abschlusstest startet hier">▶ Test</div>}
                   </div>
+                  <div className={`px-1.5 py-0.5 bg-slate-800 text-xs text-left flex items-center gap-1 ${idx === currentSlide ? "text-orange-400" : "text-slate-500"}`}>
+                    <span>{idx}</span>
+                    {hasQuiz&&<span style={{width:5,height:5,borderRadius:'50%',background:'#3b82f6',flexShrink:0}} title="Auffrischungsfrage"/>}
+                    {hasAbschluss&&<span style={{width:5,height:5,borderRadius:'50%',background:'#f97316',flexShrink:0}} title="Abschlusstest"/>}
+                  </div>
+                  </>)})()}
                 </button>
               ))}
             </div>
@@ -16295,18 +16355,20 @@ function TrainingAdmin({ supabase }) {
                   🎬 Video
                 </button>
               )}
-              {savedAbschluss[selectedPres?.id]&&currentSlide>=(savedAbschluss[selectedPres?.id]?.triggerSlide||selectedPres?.slide_count)&&!abschlussRunning&&(
+              {(savedAbschluss[selectedPres?.id]||questions.filter(q=>q.presentation_id===selectedPres?.id).length>0)&&currentSlide>=(savedAbschluss[selectedPres?.id]?.triggerSlide||Math.max(1,selectedPres?.slide_count-1))&&!abschlussRunning&&(
                 <button onClick={()=>startAbschlusstest(selectedPres.id)}
                   style={{background:'linear-gradient(135deg,rgba(249,115,22,0.3),rgba(234,88,12,0.3))',color:'#f97316',border:'1.5px solid rgba(249,115,22,0.5)',borderRadius:8,padding:'8px 12px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
-                  🎓 Abschlusstest ({(savedAbschluss[selectedPres.id].slides||[]).reduce((s,sl)=>s+(sl.questions?.length||0),0)} Fragen)
+                  🎓 Abschlusstest starten
                 </button>
               )}
-              {abschlussRunning&&(
-                <button onClick={nextAbschlussQuestion}
-                  style={{background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',border:'none',borderRadius:8,padding:'8px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
-                  ⏭ Nächste Frage ({abschlussIdx+1}/{abschlussQueue.length})
+              {abschlussRunning&&(<>
+                <span style={{color:'#f97316',fontWeight:700,fontSize:12}}>🎓 Test läuft ({abschlussQueue.length} Fragen)</span>
+                <span style={{color:'#86efac',fontSize:11}}>{[...new Set(allQuizAnswers.filter(a=>a.question_id?.startsWith?.('abs-')).map(a=>a.user_name))].length} Agents aktiv</span>
+                <button onClick={stopAbschlusstest}
+                  style={{background:'rgba(239,68,68,0.2)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:8,padding:'6px 10px',fontWeight:700,fontSize:11,cursor:'pointer'}}>
+                  ✓ Test beenden
                 </button>
-              )}
+              </>)}
             </>
           )}
           <select value={transitionStyle} onChange={e=>applyTransition(e.target.value)}
@@ -16345,6 +16407,11 @@ function TrainingAgent({ supabase }) {
   const [slideAnimating, setSlideAnimating] = React.useState(false);
   const [quizAnswered, setQuizAnswered] = React.useState(null);
   const [quizSubmitting, setQuizSubmitting] = React.useState(null); // question id being submitted
+  const [absIdx, setAbsIdx] = React.useState(0);
+  const [absAnswers, setAbsAnswers] = React.useState([]);
+  const [absSelected, setAbsSelected] = React.useState(null);
+  const [absDone, setAbsDone] = React.useState(false);
+  const [absSubmitting, setAbsSubmitting] = React.useState(false);
   const imgRef = React.useRef(null);
 
   // Realtime
@@ -16368,7 +16435,7 @@ function TrainingAgent({ supabase }) {
             }, payload.new.transition_style==='none'?0:80);
           }
           setSlideTransition(payload.new.transition_style||'fade');
-          if (!payload.new?.quiz_active) setQuizAnswered(null);
+          if (!payload.new?.quiz_active) { setQuizAnswered(null); setAbsIdx(0); setAbsAnswers([]); setAbsSelected(null); setAbsDone(false); }
           if (payload.new?.video_url && isFullscreen) setIsFullscreen(false);
         } else if (!payload.new?.active) {
           setSession(null); setPres(null); setIsLive(false); setCountdown(null); setQuizAnswered(null);
@@ -16406,7 +16473,9 @@ function TrainingAgent({ supabase }) {
   // Reset quiz answer when question changes
   React.useEffect(() => {
     setQuizAnswered(null);
-  }, [session?.quiz_question?.id]);
+    // Reset abschlusstest state for new test
+    setAbsIdx(0); setAbsAnswers([]); setAbsSelected(null); setAbsDone(false); setAbsSubmitting(false);
+  }, [session?.quiz_question?.id, session?.quiz_question?.started_at]);
 
   function checkStartTime(sess) {
     if (!sess.start_time) { setIsLive(true); setCountdown(null); return; }
@@ -16434,7 +16503,7 @@ function TrainingAgent({ supabase }) {
 
   // Keine Session
   if (!session || !pres) return (
-    <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12}}>
+    <div style={{background:'#0a0f1a',minHeight:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12}}>
       <div style={{fontSize:56}}>📺</div>
       <div style={{color:'#94a3b8',fontWeight:600,fontSize:18}}>Keine aktive Schulung</div>
       <div style={{color:'#475569',fontSize:14,textAlign:'center',maxWidth:300}}>Sobald der Trainer eine Schulung startet, erscheint sie hier automatisch.</div>
@@ -16452,7 +16521,7 @@ function TrainingAgent({ supabase }) {
     const r=120; const circ=2*Math.PI*r; const sz=280;
     const mins=Math.floor(countdown/60); const secs=countdown%60;
     return (
-      <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:24}}>
+      <div style={{background:'#0a0f1a',minHeight:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:24}}>
         <div style={{color:'#f97316',fontWeight:800,fontSize:28,textAlign:'center'}}>{pres.title}</div>
         <div style={{color:'#64748b',fontSize:17}}>Schulung startet gleich – bereite dich vor</div>
         <div style={{position:'relative',width:sz,height:sz}}>
@@ -16480,6 +16549,116 @@ function TrainingAgent({ supabase }) {
   // Quiz Screen
   if (isLive && session?.quiz_active && session?.quiz_question) {
     const q = session.quiz_question;
+
+    // ── ABSCHLUSSTEST (multi-question quiz) ──────────────────────────
+    if (q.type === 'abschlusstest' && q.questions?.length) {
+      const total = q.questions.length;
+      const current = q.questions[absIdx];
+
+      const submitAbsAnswer = async (optIdx) => {
+        if (absSelected !== null || absSubmitting) return;
+        setAbsSubmitting(true);
+        setAbsSelected(optIdx);
+        const isCorrect = optIdx === current.correct_index;
+        const ans = { questionIdx: absIdx, answer_index: optIdx, is_correct: isCorrect };
+        setAbsAnswers(prev => [...prev, ans]);
+        // Save to Supabase
+        await supabase.from("training_quiz_answers").insert({
+          session_id: session.id,
+          question_id: current.id || ('abs-q-'+absIdx),
+          user_id: "agent",
+          user_name: "Agent",
+          answer_index: optIdx,
+          is_correct: isCorrect
+        });
+        setAbsSubmitting(false);
+        // Auto-advance after 2s
+        setTimeout(() => {
+          if (absIdx + 1 >= total) { setAbsDone(true); }
+          else { setAbsIdx(prev => prev + 1); setAbsSelected(null); }
+        }, 2000);
+      };
+
+      if (absDone) {
+        const correct = absAnswers.filter(a => a.is_correct).length;
+        const pct = Math.round(correct / total * 100);
+        const passed = pct >= 80;
+        return (
+          <div style={{background:'#080d14',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 32px',minHeight:'100%'}}>
+            <div style={{fontSize:64,marginBottom:16}}>{passed ? '🏆' : '📋'}</div>
+            <div style={{color:passed?'#86efac':'#fca5a5',fontWeight:900,fontSize:48,marginBottom:8}}>{pct}%</div>
+            <div style={{color:passed?'#22c55e':'#ef4444',fontSize:22,fontWeight:700,marginBottom:8}}>
+              {passed?'Bestanden!':'Nicht bestanden'}
+            </div>
+            <div style={{color:'#94a3b8',fontSize:16,marginBottom:32}}>{correct} von {total} Fragen richtig</div>
+            <div style={{display:'flex',flexDirection:'column',gap:8,maxWidth:600,width:'100%'}}>
+              {q.questions.map((qq,i) => {
+                const ans = absAnswers[i];
+                const ok = ans?.is_correct;
+                return (
+                  <div key={i} style={{background:ok?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)',border:'1.5px solid '+(ok?'rgba(34,197,94,0.3)':'rgba(239,68,68,0.3)'),borderRadius:12,padding:'10px 14px',display:'flex',alignItems:'center',gap:10}}>
+                    <span style={{fontSize:18}}>{ok?'✅':'❌'}</span>
+                    <div style={{flex:1}}>
+                      <div style={{color:'#e2e8f0',fontSize:13,fontWeight:600}}>{qq.question}</div>
+                      {!ok&&<div style={{color:'#86efac',fontSize:11,marginTop:2}}>Richtig: {String.fromCharCode(65+qq.correct_index)}) {qq.options[qq.correct_index]}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+
+      const colors = ['#3b82f6','#8b5cf6','#f97316','#ec4899'];
+      return (
+        <div style={{background:'#080d14',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 32px',minHeight:'100%'}}>
+          <div style={{color:'#f97316',fontWeight:800,fontSize:24,marginBottom:4,display:'flex',alignItems:'center',gap:12}}>
+            <span style={{fontSize:44}}>🎓</span> Abschlusstest
+          </div>
+          <div style={{color:'#475569',fontSize:14,marginBottom:8}}>Frage {absIdx+1} von {total}</div>
+          <div style={{width:'100%',maxWidth:500,height:6,background:'#1e293b',borderRadius:3,marginBottom:28}}>
+            <div style={{width:((absIdx+1)/total*100)+'%',height:'100%',background:'linear-gradient(90deg,#f97316,#ea580c)',borderRadius:3,transition:'width 0.5s'}}/>
+          </div>
+          <div style={{background:'#111827',border:'2px solid #1f2937',borderRadius:20,padding:'36px 40px',maxWidth:860,width:'100%',marginBottom:32,boxShadow:'0 30px 60px rgba(0,0,0,0.6)'}}>
+            <div style={{color:'#fff',fontWeight:900,fontSize:28,lineHeight:1.5,textAlign:'center'}}>{current.question}</div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,maxWidth:860,width:'100%'}}>
+            {current.options.map((opt,i) => {
+              const isCorrect = i === current.correct_index;
+              const isSelected = absSelected === i;
+              const showResult = absSelected !== null;
+              let bg='#1e293b', border='#334155', color='#e2e8f0';
+              if (showResult) {
+                if (isCorrect) { bg='rgba(34,197,94,0.2)'; border='#22c55e'; color='#86efac'; }
+                else if (isSelected) { bg='rgba(239,68,68,0.2)'; border='#ef4444'; color='#fca5a5'; }
+              }
+              return (
+                <button key={i} onClick={()=>submitAbsAnswer(i)} disabled={absSelected!==null}
+                  style={{background:bg,border:'3px solid '+border,borderRadius:16,padding:'24px 20px',color,fontWeight:700,fontSize:20,
+                    cursor:absSelected===null?'pointer':'not-allowed',transition:'all 0.2s',textAlign:'left',display:'flex',alignItems:'center',gap:16}}>
+                  <span style={{width:48,height:48,borderRadius:'50%',background:absSelected===null?colors[i]:isCorrect?'#22c55e':isSelected?'#ef4444':'#1e293b',
+                    display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:20,color:'#fff',flexShrink:0,border:'3px solid '+(absSelected===null?colors[i]:border)}}>
+                    {String.fromCharCode(65+i)}
+                  </span>
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+          {absSelected !== null && (
+            <div style={{marginTop:24,color:absSelected===current.correct_index?'#86efac':'#fca5a5',fontSize:18,fontWeight:800,
+              background:absSelected===current.correct_index?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)',
+              border:'2px solid '+(absSelected===current.correct_index?'rgba(34,197,94,0.3)':'rgba(239,68,68,0.3)'),
+              borderRadius:14,padding:'14px 28px'}}>
+              {absSelected===current.correct_index?'✅ Richtig!':'❌ Falsch. Richtig: '+String.fromCharCode(65+current.correct_index)}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Single question (Auffrischungsrunde) ─────────────────────────
     const answered = quizAnswered;
     const setAnswered = setQuizAnswered;
     const submitting = quizSubmitting === q.id;
@@ -16501,7 +16680,7 @@ function TrainingAgent({ supabase }) {
 
     const colors = ['#3b82f6','#8b5cf6','#f97316','#ec4899'];
     return (
-      <div style={{background:'#080d14',minHeight:'calc(100vh - 110px)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 32px'}}>
+      <div style={{background:'#080d14',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 32px'}}>
         <div style={{color:'#a78bfa',fontWeight:800,fontSize:24,marginBottom:8,display:'flex',alignItems:'center',gap:12}}>
           <span style={{fontSize:44}}>🧠</span> Auffrischungsrunde
         </div>
@@ -16582,7 +16761,7 @@ function TrainingAgent({ supabase }) {
     const pct = Math.max(0,Math.min(1,pauseSecs/totalSecs));
     const r=110; const circ=2*Math.PI*r; const sz=260;
     return (
-      <div style={{background:'#0d1117',minHeight:'calc(100vh - 110px)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20}}>
+      <div style={{background:'#0d1117',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20}}>
         <div style={{fontSize:80}}>{isMittagspause?'☕':'⏸'}</div>
         <div style={{color:color,fontWeight:900,fontSize:46,letterSpacing:1}}>{isMittagspause?'Mittagspause':'Kurzpause'}</div>
         <div style={{color:'#64748b',fontSize:20}}>Wir sehen uns gleich wieder!</div>
@@ -16633,7 +16812,7 @@ function TrainingAgent({ supabase }) {
 
   // Normal Live-Ansicht
   return (
-    <div style={{background:'#0a0f1a',minHeight:'calc(100vh - 110px)',display:'flex',flexDirection:'column',alignItems:'center',padding:20}}>
+    <div style={{background:'#0a0f1a',display:'flex',flexDirection:'column',alignItems:'center',padding:20}}>
       <div style={{width:'100%',maxWidth:960,display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
         <span style={{color:'#f97316',fontWeight:700,fontSize:16}}>{pres.title}</span>
         <span style={{color:'#475569',fontSize:15}}>{currentSlide} / {pres.slide_count}</span>
@@ -16678,7 +16857,7 @@ function TrainingCenter({ supabase, isAdmin }) {
                 {id:'ekd-schulungen',label:'🎓 EKD Schulungen'},
             ];
             return(
-                <div style={{display:'flex',flexDirection:'column',minHeight:'calc(100vh - 110px)',background:'#0a0f1a'}}>
+                <div style={{display:'flex',flexDirection:'column',minHeight:'100vh',background:'#0a0f1a'}}>
                     <div style={{display:'flex',gap:4,padding:'8px 12px 0',borderBottom:'1px solid rgba(255,255,255,0.06)',background:'#0a0f1a'}}>
                         {tabs.map(t=>(
                             <button key={t.id} onClick={()=>setSubTab(t.id)}
