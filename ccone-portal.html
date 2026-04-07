@@ -283,7 +283,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.3.1';
+        const APP_VERSION = '6.3.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14250,7 +14250,7 @@ Regeln:
                 </div>);
             };
 
-            const Panel=({title,data,color,isLive,isEkd,onUpload,fullWidth,standort,onStandortChange,onReset})=>{
+            const Panel=({title,data,color,isLive,isEkd,onUpload,fullWidth,standort,onStandortChange,onReset,stackedList})=>{
                 const agents=data?.agents||[];
                 const sum=data?.summary||{};
                 const kpi=data?.kpi||{};
@@ -14310,7 +14310,7 @@ Regeln:
                                 <p className="text-slate-600 text-base mt-1">{isEkd?'EKD-Bookmarklet auf der VIER Statistik-Seite starten':'Bookmarklet auf der Telefonanlage klicken'}</p>
                             </div></div>
                         ):(
-                            <div className={'grid gap-3 grid-cols-'+(fullWidth?(n<=3?2:n<=6?3:4):(n<=2?1:n<=4?2:3))}>
+                            <div className={'grid gap-3 grid-cols-'+(stackedList?1:fullWidth?(n<=3?2:n<=6?3:4):(n<=2?1:n<=4?2:3))}>
                                 {activeAgents.map((a,i)=><AgentCard key={a.name||i} a={a} isEkd={isEkd}/>)}
                             </div>
                         )}
@@ -14381,7 +14381,7 @@ Regeln:
                     </div>
                 </div>
                 <div className="flex flex-1 overflow-hidden" style={{transformOrigin:'top left',transform:'scale('+zoom+')',width:(100/zoom)+'%',height:(100/zoom)+'%'}}>
-                    {(mode==='vnr'||mode==='both')&&<Panel title="VNR" data={vnrData} color="#10b981" isLive={true} isEkd={false} fullWidth={mode==='vnr'} onReset={()=>{vnrCacheRef.current={};setVnrData(null)}}/>}
+                    {(mode==='vnr'||mode==='both')&&<Panel title="VNR" data={vnrData} color="#10b981" isLive={true} isEkd={false} fullWidth={mode==='vnr'} stackedList={mode==='both'} onReset={()=>{vnrCacheRef.current={};setVnrData(null)}}/>}
                     {mode==='both'&&<div className="w-px flex-shrink-0" style={{background:'rgba(255,255,255,0.1)'}}/>}
                     {(mode==='ekd'||mode==='both')&&<Panel title="EKD" data={filteredEkdData} color="#3b82f6" isLive={true} isEkd={true} onUpload={true} fullWidth={mode==='ekd'} standort={ekdStandort} onStandortChange={setEkdStandort}/>}
                 </div>
