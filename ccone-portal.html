@@ -283,7 +283,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.3.2';
+        const APP_VERSION = '6.3.3';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14206,17 +14206,22 @@ Regeln:
                 </div>
             );
 
-            const AgentCard=({a,isEkd})=>{
+            const AgentCard=({a,isEkd,scale})=>{
                 if(isEkd){
+                    const s=scale||1;
+                    const nameSize=s>=1?'text-2xl':s>=0.85?'text-xl':'text-lg';
+                    const numSize=s>=1?'text-5xl':s>=0.85?'text-4xl':'text-3xl';
+                    const statSize=s>=1?'text-base':s>=0.85?'text-sm':'text-xs';
+                    const padding=s>=1?'p-4':s>=0.85?'p-3':'p-2';
                     return(
-                    <div className="rounded-xl p-4" style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                    <div className={"rounded-xl "+padding} style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)'}}>
                         <div className="flex items-center justify-between mb-1">
-                            <div className="text-white font-bold text-2xl truncate min-w-0 flex-1">{a.name}</div>
-                            <div className="font-black text-5xl flex-shrink-0 ml-3" style={{color:'#d4af37'}}>{a.termin||0}</div>
+                            <div className={"text-white font-bold truncate min-w-0 flex-1 "+nameSize}>{a.name}</div>
+                            <div className={"font-black flex-shrink-0 ml-3 "+numSize} style={{color:'#d4af37'}}>{a.termin||0}</div>
                         </div>
-                        <div className="flex items-center gap-4 text-base">
-                            <span className="text-blue-400 font-bold">{a.gespraeche||0} Gespräche</span>
-                            <span className="text-slate-400 font-bold">{a.beendet||0} Beendet</span>
+                        <div className={"flex items-center gap-3 "+statSize}>
+                            <span className="text-blue-400 font-bold">{a.gespraeche||0} Gespr.</span>
+                            <span className="text-slate-400 font-bold">{a.beendet||0} Bnd.</span>
                             <span className="text-red-400 font-bold">{a.ne||0} NE</span>
                             {a.produktiv>0&&<span className="text-blue-300 font-bold">{a.produktiv.toFixed(0)}%</span>}
                         </div>
@@ -14311,7 +14316,7 @@ Regeln:
                             </div></div>
                         ):(
                             <div className={'grid gap-3 grid-cols-'+(stackedList?1:fullWidth?(n<=3?2:n<=6?3:4):(n<=2?1:n<=4?2:3))}>
-                                {activeAgents.map((a,i)=><AgentCard key={a.name||i} a={a} isEkd={isEkd}/>)}
+                                {activeAgents.map((a,i)=><AgentCard key={a.name||i} a={a} isEkd={isEkd} scale={isEkd&&!fullWidth?(n<=9?1:n<=15?0.85:0.7):1}/>)}
                             </div>
                         )}
                     </div>
