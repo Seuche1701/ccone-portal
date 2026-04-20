@@ -33,6 +33,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -253,6 +254,7 @@
     @keyframes slideBlur { from { opacity:0; filter:blur(12px); } to { opacity:1; filter:blur(0); } }
   
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -277,13 +279,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.3.3';
+        const APP_VERSION = '6.3.4';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -13942,6 +13945,8 @@ Regeln:
             const adjustZoom=(delta)=>{var nz=Math.round((zoom+delta)*100)/100;nz=Math.max(0.5,Math.min(2,nz));setZoom(nz);sessionStorage.setItem('dashboard_zoom',String(nz))};
             const[vnrData,setVnrData]=useState(null);
             const[ekdData,setEkdData]=useState(null);
+            const[excelData,setExcelData]=useState([]);
+            const[excelSyncStatus,setExcelSyncStatus]=useState(null);
             const[lastUpdate,setLastUpdate]=useState(null);
             const[ekdStandort,setEkdStandort]=useState('alle');
             const fileRef=useRef(null);
@@ -13984,17 +13989,80 @@ Regeln:
                 return found;
             };
 
+            /* Excel-Daten mit EKD-Daten zusammenführen */
+            const normMatch=(s)=>(s||'').replace(/\s*[\(\[]\s*(ekd|vnr|schulung|test)\s*[\)\]]\s*/gi,'').replace(/\.{2,}/g,'').replace(/\u2026/g,'').trim().toLowerCase().replace(/,/g,' ').replace(/[-–—\.]/g,' ').split(/\s+/).filter(p=>p.length>=2);
+            const mergedEkdData=React.useMemo(()=>{
+                if(!excelData||excelData.length===0){
+                    /* Kein Excel: nur Excel-basierte Agents zeigen falls kein Bookmarklet-Daten */
+                    if(ekdData)return ekdData;
+                    return null;
+                }
+                /* Excel-Daten als Agents aufbereiten */
+                var excelAgents=excelData.map(e=>({
+                    name:e.name,
+                    termin:e.termin||0,
+                    no_success:e.no_success||0,
+                    termin_quote:e.termin_quote||0,
+                    standort_excel:e.standort||'',
+                    _fromExcel:true
+                }));
+                if(!ekdData||!ekdData.agents||ekdData.agents.length===0){
+                    /* Nur Excel-Daten, kein Bookmarklet */
+                    var sm={total:excelAgents.length,
+                        termine:excelAgents.reduce((s,a)=>s+(a.termin||0),0),
+                        no_success:excelAgents.reduce((s,a)=>s+(a.no_success||0),0),
+                        gespraeche:0,beendet:0,ne:0};
+                    return{agents:excelAgents,summary:sm,updatedAt:new Date().toISOString()};
+                }
+                /* Beide Quellen: Excel-Werte in Bookmarklet-Agents einmergen */
+                var merged=(ekdData.agents||[]).map(a=>{
+                    var nA=normMatch(a.name);
+                    if(nA.length<1)return a;
+                    var found=null;
+                    excelAgents.forEach(e=>{
+                        if(found)return;
+                        var nE=normMatch(e.name);if(nE.length<1)return;
+                        var mc=0;nA.forEach(p=>{if(nE.some(x=>x.includes(p)||p.includes(x)))mc++});
+                        if(mc>=Math.min(2,nA.length))found=e;
+                    });
+                    if(found)return{...a,termin:found.termin,no_success:found.no_success,termin_quote:found.termin_quote,standort_excel:found.standort_excel,_fromExcel:true};
+                    return a;
+                });
+                /* Excel-Agents hinzufügen die nicht im Bookmarklet sind */
+                var mergedNames=merged.map(a=>normMatch(a.name).join(' '));
+                excelAgents.forEach(e=>{
+                    var nE=normMatch(e.name);if(nE.length<1)return;
+                    var exists=mergedNames.some(mn=>{var mc=0;nE.forEach(p=>{if(mn.includes(p))mc++});return mc>=Math.min(2,nE.length)});
+                    if(!exists)merged.push(e);
+                });
+                var sm={total:merged.length,
+                    termine:merged.reduce((s,a)=>s+(a.termin||0),0),
+                    no_success:merged.reduce((s,a)=>s+(a.no_success||0),0),
+                    gespraeche:merged.reduce((s,a)=>s+(a.gespraeche||0),0),
+                    beendet:merged.reduce((s,a)=>s+(a.beendet||0),0),
+                    ne:merged.reduce((s,a)=>s+(a.ne||0),0)};
+                return{...ekdData,agents:merged,summary:sm};
+            },[ekdData,excelData]);
+
             // EKD Daten nach Standort filtern
             const filteredEkdData=React.useMemo(()=>{
-                if(!ekdData||ekdStandort==='alle')return ekdData;
-                var agents=(ekdData.agents||[]).filter(a=>{ var s=(getStandort(a.name)||'').toLowerCase(); return s===ekdStandort; });
-                var sm={total:agents.length,
+                var src=mergedEkdData;
+                if(!src)return null;
+                var agents=src.agents||[];
+                if(ekdStandort!=='alle'){
+                    agents=agents.filter(a=>{
+                        var s=(a.standort_excel||(getStandort(a.name))||'').toLowerCase();
+                        return s===ekdStandort;
+                    });
+                }
+                var sm={total:agents.filter(a=>(a.termin||0)>0).length,
                     termine:agents.reduce((s,a)=>s+(a.termin||0),0),
+                    no_success:agents.reduce((s,a)=>s+(a.no_success||0),0),
                     beendet:agents.reduce((s,a)=>s+(a.beendet||0),0),
                     gespraeche:agents.reduce((s,a)=>s+(a.gespraeche||0),0),
                     ne:agents.reduce((s,a)=>s+(a.ne||0),0)};
-                return{...ekdData,agents:agents,summary:sm};
-            },[ekdData,ekdStandort,appData?.users]);
+                return{...src,agents:agents,summary:sm};
+            },[mergedEkdData,ekdStandort,appData?.users]);
 
             // Auto-refresh appData alle 15 Sek (still, ohne Notification)
             useEffect(()=>{
@@ -14028,6 +14096,19 @@ Regeln:
                         if(r.ok){const d=await r.json();if(d[0]&&d[0].value){setEkdData(d[0].value);setLastUpdate(new Date())}}
                     }catch(e){}};
                     fetchEkd();polls.push(setInterval(fetchEkd,5000));
+                    /* Excel-Kennzahlen aus Supabase holen (nur heutiges Datum) */
+                    const today=new Date().toISOString().slice(0,10);
+                    const fetchExcel=async()=>{try{
+                        const r=await fetch(SUPABASE_URL+'/rest/v1/excel_kennzahlen?datum=eq.'+today+'&select=name,standort,no_success,termin,termin_quote,updated_at',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                        if(r.ok){const d=await r.json();setExcelData(d)}
+                    }catch(e){}};
+                    const fetchSyncStatus=async()=>{try{
+                        const r=await fetch(SUPABASE_URL+'/rest/v1/sync_status?source=eq.sharepoint-excel&select=last_success,status,rows_synced',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                        if(r.ok){const d=await r.json();if(d[0])setExcelSyncStatus(d[0])}
+                    }catch(e){}};
+                    fetchExcel();fetchSyncStatus();
+                    polls.push(setInterval(fetchExcel,60000));/* Excel alle 60s prüfen */
+                    polls.push(setInterval(fetchSyncStatus,60000));
                 }
                 return()=>polls.forEach(p=>clearInterval(p));
             },[mode]);
@@ -14036,7 +14117,8 @@ Regeln:
             const lastSyncRef=useRef('');
             const[syncInfo,setSyncInfo]=useState(null);
             const doEkdSync=()=>{
-                if(!ekdData?.agents?.length)return;
+                var syncSrc=mergedEkdData||ekdData;
+                if(!syncSrc?.agents?.length)return;
                 var today=new Date().toISOString().slice(0,10);
                 var normN=(s)=>(s||'').replace(/\s*[\(\[]\s*(ekd|vnr|schulung|test)\s*[\)\]]\s*/gi,'').replace(/\.{2,}/g,'').replace(/\u2026/g,'').trim().toLowerCase().replace(/,/g,' ').replace(/[-–—\.]/g,' ').split(/\s+/).filter(p=>p.length>=2);
                 var users=appData?.users||[];
@@ -14046,8 +14128,8 @@ Regeln:
                 var pts={...(appData?.rewardsPoints||{})};
                 var nt=[...termine];
                 var synced=0,totalT=0,totalP=0,skipped=0;
-                console.log('EKD-Sync: Start,',ekdData.agents.length,'Agents, ppt='+ppt+', users='+users.length+', heute='+today);
-                ekdData.agents.forEach(function(ag){
+                console.log('EKD-Sync: Start,',syncSrc.agents.length,'Agents, ppt='+ppt+', users='+users.length+', heute='+today);
+                syncSrc.agents.forEach(function(ag){
                     var tCount=ag.termin||0;
                     if(tCount<=0)return;
                     var nA=normN(ag.name);if(nA.length<1)return;
@@ -14213,6 +14295,8 @@ Regeln:
                     const numSize=s>=1?'text-5xl':s>=0.85?'text-4xl':'text-3xl';
                     const statSize=s>=1?'text-base':s>=0.85?'text-sm':'text-xs';
                     const padding=s>=1?'p-4':s>=0.85?'p-3':'p-2';
+                    const tq=a.termin_quote||0;
+                    const quoteColor=tq>=65?'#10b981':tq>=50?'#fbbf24':'#f87171';
                     return(
                     <div className={"rounded-xl "+padding} style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)'}}>
                         <div className="flex items-center justify-between mb-1">
@@ -14220,8 +14304,10 @@ Regeln:
                             <div className={"font-black flex-shrink-0 ml-3 "+numSize} style={{color:'#d4af37'}}>{a.termin||0}</div>
                         </div>
                         <div className={"flex items-center gap-3 "+statSize}>
-                            <span className="text-blue-400 font-bold">{a.gespraeche||0} Gespr.</span>
-                            <span className="text-slate-400 font-bold">{a.beendet||0} Bnd.</span>
+                            {a._fromExcel&&<span className="font-bold" style={{color:quoteColor}}>{tq}%</span>}
+                            {a._fromExcel&&<span className="text-orange-400 font-bold">{a.no_success||0} NS</span>}
+                            {(a.gespraeche>0||!a._fromExcel)&&<span className="text-blue-400 font-bold">{a.gespraeche||0} Gespr.</span>}
+                            {(a.beendet>0||!a._fromExcel)&&<span className="text-slate-400 font-bold">{a.beendet||0} Bnd.</span>}
                             <span className="text-red-400 font-bold">{a.ne||0} NE</span>
                             {a.produktiv>0&&<span className="text-blue-300 font-bold">{a.produktiv.toFixed(0)}%</span>}
                         </div>
@@ -14260,8 +14346,32 @@ Regeln:
                 const sum=data?.summary||{};
                 const kpi=data?.kpi||{};
                 const updated=data?.updatedAt?new Date(data.updatedAt).toLocaleTimeString('de-DE'):'—';
-                const stale=data?.updatedAt?(Date.now()-new Date(data.updatedAt).getTime()>60000):true;
-                const activeAgents=[...agents].sort((a,b)=>(a._offline?1:0)-(b._offline?1:0));
+                const visibleAgents=isEkd?agents.filter(a=>(a.termin||0)>0):agents;
+                const activeAgents=[...visibleAgents].sort((a,b)=>(a._offline?1:0)-(b._offline?1:0));
+
+                /* Countdown-Timer für EKD (15 Min Zyklus) */
+                const[countdown,setCountdown]=useState('');
+                const[countdownWarning,setCountdownWarning]=useState(false);
+                useEffect(()=>{
+                    if(!isEkd||!isLive)return;
+                    const intervalMs=900000;/* 15 Min */
+                    const warnMs=60000;/* letzte 1 Min = Warnung */
+                    const tick=()=>{
+                        if(!data?.updatedAt){setCountdown('');setCountdownWarning(false);return}
+                        var elapsed=Date.now()-new Date(data.updatedAt).getTime();
+                        var remaining=Math.max(0,intervalMs-elapsed);
+                        var mins=Math.floor(remaining/60000);
+                        var secs=Math.floor((remaining%60000)/1000);
+                        setCountdown(String(mins).padStart(2,'0')+':'+String(secs).padStart(2,'0'));
+                        setCountdownWarning(remaining<=warnMs);
+                    };
+                    tick();
+                    var t=setInterval(tick,1000);
+                    return()=>clearInterval(t);
+                },[data?.updatedAt,isEkd,isLive]);
+
+                const staleMs=isEkd?900000:60000;
+                const stale=isEkd?countdownWarning:(data?.updatedAt?(Date.now()-new Date(data.updatedAt).getTime()>staleMs):true);
                 // Auto-adjust: Spalten basierend auf Agent-Anzahl + Breite
                 const n=activeAgents.length;
                 const cols=fullWidth?(n<=2?2:n<=4?2:n<=6?3:n<=9?3:n<=12?4:n<=16?4:5):(n<=2?2:n<=4?2:n<=6?3:n<=9?3:4);
@@ -14270,11 +14380,11 @@ Regeln:
                     <div className="px-5 py-4 flex items-center justify-between flex-shrink-0" style={{background:color+'15',borderBottom:'2px solid '+color+'40'}}>
                         <div className="flex items-center gap-4">
                             <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-white text-lg" style={{background:color}}>{title.charAt(0)}</div>
-                            <div><h2 className="text-white font-black text-3xl">{title}</h2><p className="text-lg text-slate-400">{activeAgents.length} Agents aktiv • Stand: {updated}{stale&&data?' ⚠️ veraltet':''}</p></div>
+                            <div><h2 className="text-white font-black text-3xl">{title}</h2><p className="text-lg text-slate-400">{activeAgents.length} Agents aktiv • Stand: {updated}</p></div>
                         </div>
                         <div className="flex items-center gap-3">
-                            {isLive&&!stale&&<span className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-green-400" style={{animation:'pulse 2s infinite'}}/><span className="text-lg text-green-400 font-bold">LIVE</span></span>}
-                            {isLive&&stale&&data&&<span className="text-base text-amber-400 font-bold">⏳ Warte auf Daten...</span>}
+                            {isLive&&!stale&&<span className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-green-400" style={{animation:'pulse 2s infinite'}}/><span className="text-lg text-green-400 font-bold">LIVE</span>{isEkd&&countdown&&<span className="text-sm text-slate-500 font-mono">{countdown}</span>}</span>}
+                            {isLive&&stale&&data&&<span className="flex items-center gap-2"><span className="text-base text-amber-400 font-bold">⏳ Warte auf Daten...</span>{isEkd&&countdown&&<span className="text-sm text-amber-400 font-mono">{countdown}</span>}</span>}
                             {onStandortChange&&<div className="flex gap-2">
                                 {[['alle','Alle'],['berlin','Berlin'],['chemnitz','Chemnitz']].map(([v,l])=>(
                                     <button key={v} onClick={()=>onStandortChange(v)} className="px-3 py-1.5 rounded-lg text-sm font-bold" style={{background:standort===v?color+'30':'rgba(255,255,255,0.05)',color:standort===v?color:'#64748b',border:'1px solid '+(standort===v?color+'50':'rgba(255,255,255,0.08)')}}>{l}</button>
@@ -14287,11 +14397,12 @@ Regeln:
                     {activeAgents.length>0&&(
                         <div className="px-4 py-3 flex-shrink-0">
                             {isEkd?(
-                                <div className="grid grid-cols-5 gap-3">
+                                <div className="grid grid-cols-6 gap-3">
                                     <StatCard icon="👥" value={sum.total||0} label="Agents" color={color}/>
                                     <StatCard icon="📅" value={sum.termine||0} label="Termine" color="#d4af37"/>
+                                    <StatCard icon="🚫" value={sum.no_success||0} label="NO_SUCCESS" color="#f97316"/>
+                                    <StatCard icon="📊" value={sum.termine>0?(sum.termine/(sum.termine+(sum.no_success||0))*100).toFixed(1)+'%':'—'} label="Quote" color="#10b981"/>
                                     <StatCard icon="🗣️" value={sum.gespraeche||0} label="Gespräche" color={color}/>
-                                    <StatCard icon="📋" value={sum.beendet||0} label="Beendet" color={color}/>
                                     <StatCard icon="❌" value={sum.ne||0} label="NE" color="#f87171"/>
                                 </div>
                             ):(
@@ -14375,8 +14486,9 @@ Regeln:
                     </div>
                     <div className="flex items-center gap-3">
                         {lastUpdate&&<span className="text-base text-slate-400">Update: {lastUpdate.toLocaleTimeString('de-DE')}</span>}
+                        {excelData?.length>0&&(mode==='ekd'||mode==='both')&&<span className="text-sm font-bold px-2 py-1 rounded-lg" style={{background:'rgba(16,185,129,0.1)',color:'#10b981',border:'1px solid rgba(16,185,129,0.2)'}}>📊 Excel: {excelData.length} Agents{excelSyncStatus?.last_success?' · '+new Date(excelSyncStatus.last_success).toLocaleTimeString('de-DE'):''}</span>}
                         {vnrData?.agents?.length>0&&(mode==='vnr'||mode==='both')&&<button onClick={doVnrSync} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(16,185,129,0.15)',color:'#10b981',border:'1px solid rgba(16,185,129,0.3)'}}>🔄 VNR Erfolge sync</button>}
-                        {ekdData?.agents?.length>0&&(mode==='ekd'||mode==='both')&&<button onClick={doEkdSync} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(59,130,246,0.15)',color:'#3b82f6',border:'1px solid rgba(59,130,246,0.3)'}}>🔄 EKD Termine sync</button>}
+                        {(ekdData?.agents?.length>0||excelData?.length>0)&&(mode==='ekd'||mode==='both')&&<button onClick={doEkdSync} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(59,130,246,0.15)',color:'#3b82f6',border:'1px solid rgba(59,130,246,0.3)'}}>🔄 EKD Termine sync</button>}
                         {syncInfo&&<span className="text-sm font-bold px-3 py-1 rounded-lg" style={{background:syncInfo.agents>0?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.15)',color:syncInfo.agents>0?'#10b981':'#94a3b8',border:'1px solid '+(syncInfo.agents>0?'rgba(16,185,129,0.2)':'rgba(100,116,139,0.2)')}}>{syncInfo.agents>0?'✅ '+(syncInfo.src||'EKD')+': '+syncInfo.agents+' Ag · +'+syncInfo.termine+'T'+(syncInfo.punkte>0?' · +'+syncInfo.punkte+'P':''):'ℹ️ '+(syncInfo.src||'EKD')+': Aktuell'}{syncInfo.skipped>0?' · '+syncInfo.skipped+'⚠':''}  · {syncInfo.time.toLocaleTimeString('de-DE')}</span>}
                         <div className="flex items-center gap-1 ml-2" style={{background:'rgba(255,255,255,0.06)',borderRadius:8,padding:'2px 4px'}}>
                             <button onClick={()=>adjustZoom(-0.1)} className="w-8 h-8 rounded-lg text-lg font-black text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center">−</button>
@@ -16903,12 +17015,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -17008,6 +17122,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
