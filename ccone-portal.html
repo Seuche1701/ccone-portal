@@ -286,7 +286,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.3.5';
+        const APP_VERSION = '6.3.6';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14096,7 +14096,7 @@ Regeln:
                         const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.liveDashboard_ekd&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(r.ok){const d=await r.json();if(d[0]&&d[0].value){setEkdData(d[0].value);setLastUpdate(new Date())}}
                     }catch(e){}};
-                    fetchEkd();polls.push(setInterval(fetchEkd,5000));
+                    fetchEkd();polls.push(setInterval(fetchEkd,10000));/* VIER alle 10 Sek */
                     /* Excel-Kennzahlen aus Supabase holen (nur heutiges Datum) */
                     const today=new Date().toISOString().slice(0,10);
                     const fetchExcel=async()=>{try{
@@ -14108,11 +14108,25 @@ Regeln:
                         if(r.ok){const d=await r.json();if(d[0])setExcelSyncStatus(d[0])}
                     }catch(e){}};
                     fetchExcel();fetchSyncStatus();
-                    polls.push(setInterval(fetchExcel,900000));/* Excel alle 15 Min prüfen */
+                    polls.push(setInterval(fetchExcel,900000));/* Excel alle 15 Min */
                     polls.push(setInterval(fetchSyncStatus,900000));
+                    /* Fetch-Funktionen für manuelle Buttons speichern */
+                    window._ekdRefresh=()=>{fetchEkd();fetchExcel();fetchSyncStatus()};
                 }
                 return()=>polls.forEach(p=>clearInterval(p));
             },[mode]);
+
+            /* Daten löschen / erneuern */
+            const clearEkdData=async()=>{
+                /* Lokal leeren */
+                setEkdData(null);setExcelData([]);setExcelLastFetch(null);setExcelSyncStatus(null);setLastUpdate(null);
+                /* VIER-Daten in Supabase leeren → alle PCs sehen leere Seite */
+                try{
+                    await fetch(SUPABASE_URL+'/rest/v1/ccone_data?on_conflict=key',{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({key:'liveDashboard_ekd',value:{agents:[],summary:{total:0,termine:0,gespraeche:0,beendet:0,ne:0},updatedAt:null,cleared:true}})});
+                    console.log('EKD-Daten gelöscht (alle PCs)');
+                }catch(e){console.error('Löschen fehlgeschlagen',e)}
+            };
+            const refreshEkdData=()=>{if(window._ekdRefresh)window._ekdRefresh()};
 
             /* Auto-Sync: EKD Termine aus Dashboard in Portal übertragen */
             const lastSyncRef=useRef('');
@@ -14292,25 +14306,44 @@ Regeln:
             const AgentCard=({a,isEkd,scale})=>{
                 if(isEkd){
                     const s=scale||1;
-                    const nameSize=s>=1?'text-2xl':s>=0.85?'text-xl':'text-lg';
-                    const numSize=s>=1?'text-5xl':s>=0.85?'text-4xl':'text-3xl';
-                    const statSize=s>=1?'text-base':s>=0.85?'text-sm':'text-xs';
+                    const nameSize=s>=1?'text-xl':s>=0.85?'text-lg':'text-base';
+                    const numSize=s>=1?'text-4xl':s>=0.85?'text-3xl':'text-2xl';
+                    const labelSize=s>=1?'text-sm':s>=0.85?'text-xs':'text-xs';
                     const padding=s>=1?'p-4':s>=0.85?'p-3':'p-2';
                     const tq=a.termin_quote||0;
                     const quoteColor=tq>=65?'#10b981':tq>=50?'#fbbf24':'#f87171';
+                    /* Status-Farben für VIER Live-Status */
+                    const stColors={
+                        'Telefonie':{bg:'rgba(239,68,68,0.15)',c:'#f87171',border:'rgba(239,68,68,0.3)',dot:'#ef4444'},
+                        'Nacharbeit':{bg:'rgba(245,158,11,0.15)',c:'#fbbf24',border:'rgba(245,158,11,0.3)',dot:'#f59e0b'},
+                        'Pause':{bg:'rgba(59,130,246,0.15)',c:'#60a5fa',border:'rgba(59,130,246,0.3)',dot:'#3b82f6'},
+                        'Bereit':{bg:'rgba(16,185,129,0.15)',c:'#34d399',border:'rgba(16,185,129,0.3)',dot:'#10b981'},
+                        'Klingelt':{bg:'rgba(249,115,22,0.15)',c:'#fb923c',border:'rgba(249,115,22,0.3)',dot:'#f97316'},
+                        'Wählt':{bg:'rgba(249,115,22,0.15)',c:'#fb923c',border:'rgba(249,115,22,0.3)',dot:'#f97316'}
+                    };
+                    const sc=stColors[a.status]||{bg:'rgba(255,255,255,0.05)',c:'#94a3b8',border:'rgba(255,255,255,0.1)',dot:'#64748b'};
                     return(
                     <div className={"rounded-xl "+padding} style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)'}}>
-                        <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center justify-between mb-2">
                             <div className={"text-white font-bold truncate min-w-0 flex-1 "+nameSize}>{a.name}</div>
-                            <div className={"font-black flex-shrink-0 ml-3 "+numSize} style={{color:'#d4af37'}}>{a.termin||0}</div>
+                            {a.status&&<span className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg flex-shrink-0 ml-2" style={{background:sc.bg,border:'1px solid '+sc.border}}>
+                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:sc.dot,animation:a.status==='Telefonie'?'pulse 2s infinite':'none'}}/>
+                                <span className={"font-bold "+labelSize} style={{color:sc.c}}>{a.status}{a.statuszeit?' · '+a.statuszeit:''}</span>
+                            </span>}
                         </div>
-                        <div className={"flex items-center gap-3 "+statSize}>
-                            {a._fromExcel&&<span className="font-bold" style={{color:quoteColor}}>{tq}%</span>}
-                            {a._fromExcel&&<span className="text-orange-400 font-bold">{a.no_success||0} NS</span>}
-                            {(a.gespraeche>0||!a._fromExcel)&&<span className="text-blue-400 font-bold">{a.gespraeche||0} Gespr.</span>}
-                            {(a.beendet>0||!a._fromExcel)&&<span className="text-slate-400 font-bold">{a.beendet||0} Bnd.</span>}
-                            <span className="text-red-400 font-bold">{a.ne||0} NE</span>
-                            {a.produktiv>0&&<span className="text-blue-300 font-bold">{a.produktiv.toFixed(0)}%</span>}
+                        <div className="flex items-center gap-3">
+                            <div className="text-center flex-1" style={{background:'rgba(212,175,55,0.1)',borderRadius:8,padding:'4px 0'}}>
+                                <div className={"font-black "+numSize} style={{color:'#d4af37'}}>{a.termin||0}</div>
+                                <div className={"font-bold text-slate-500 "+labelSize}>Termine</div>
+                            </div>
+                            <div className="text-center flex-1" style={{background:quoteColor+'18',borderRadius:8,padding:'4px 0'}}>
+                                <div className={"font-black "+numSize} style={{color:quoteColor}}>{tq}%</div>
+                                <div className={"font-bold text-slate-500 "+labelSize}>Quote</div>
+                            </div>
+                            <div className="text-center flex-1" style={{background:'rgba(249,115,22,0.1)',borderRadius:8,padding:'4px 0'}}>
+                                <div className={"font-black "+numSize} style={{color:'#f97316'}}>{a.no_success||0}</div>
+                                <div className={"font-bold text-slate-500 "+labelSize}>NS</div>
+                            </div>
                         </div>
                     </div>);
                 }
@@ -14398,13 +14431,11 @@ Regeln:
                     {activeAgents.length>0&&(
                         <div className="px-4 py-3 flex-shrink-0">
                             {isEkd?(
-                                <div className="grid grid-cols-6 gap-3">
+                                <div className="grid grid-cols-4 gap-3">
                                     <StatCard icon="👥" value={sum.total||0} label="Agents" color={color}/>
                                     <StatCard icon="📅" value={sum.termine||0} label="Termine" color="#d4af37"/>
                                     <StatCard icon="🚫" value={sum.no_success||0} label="NO_SUCCESS" color="#f97316"/>
                                     <StatCard icon="📊" value={sum.termine>0?(sum.termine/(sum.termine+(sum.no_success||0))*100).toFixed(1)+'%':'—'} label="Quote" color="#10b981"/>
-                                    <StatCard icon="🗣️" value={sum.gespraeche||0} label="Gespräche" color={color}/>
-                                    <StatCard icon="❌" value={sum.ne||0} label="NE" color="#f87171"/>
                                 </div>
                             ):(
                                 <div className="grid grid-cols-7 gap-3">
@@ -14490,6 +14521,8 @@ Regeln:
                         {excelData?.length>0&&(mode==='ekd'||mode==='both')&&<span className="text-sm font-bold px-2 py-1 rounded-lg" style={{background:'rgba(16,185,129,0.1)',color:'#10b981',border:'1px solid rgba(16,185,129,0.2)'}}>📊 Excel: {excelData.length} Agents{excelSyncStatus?.last_success?' · '+new Date(excelSyncStatus.last_success).toLocaleTimeString('de-DE'):''}</span>}
                         {vnrData?.agents?.length>0&&(mode==='vnr'||mode==='both')&&<button onClick={doVnrSync} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(16,185,129,0.15)',color:'#10b981',border:'1px solid rgba(16,185,129,0.3)'}}>🔄 VNR Erfolge sync</button>}
                         {(ekdData?.agents?.length>0||excelData?.length>0)&&(mode==='ekd'||mode==='both')&&<button onClick={doEkdSync} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(59,130,246,0.15)',color:'#3b82f6',border:'1px solid rgba(59,130,246,0.3)'}}>🔄 EKD Termine sync</button>}
+                        {(mode==='ekd'||mode==='both')&&<button onClick={refreshEkdData} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(16,185,129,0.15)',color:'#10b981',border:'1px solid rgba(16,185,129,0.3)'}}>🔃 Erneuern</button>}
+                        {(ekdData||excelData?.length>0)&&(mode==='ekd'||mode==='both')&&<button onClick={clearEkdData} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(239,68,68,0.1)',color:'#f87171',border:'1px solid rgba(239,68,68,0.2)'}}>🗑️ Löschen</button>}
                         {syncInfo&&<span className="text-sm font-bold px-3 py-1 rounded-lg" style={{background:syncInfo.agents>0?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.15)',color:syncInfo.agents>0?'#10b981':'#94a3b8',border:'1px solid '+(syncInfo.agents>0?'rgba(16,185,129,0.2)':'rgba(100,116,139,0.2)')}}>{syncInfo.agents>0?'✅ '+(syncInfo.src||'EKD')+': '+syncInfo.agents+' Ag · +'+syncInfo.termine+'T'+(syncInfo.punkte>0?' · +'+syncInfo.punkte+'P':''):'ℹ️ '+(syncInfo.src||'EKD')+': Aktuell'}{syncInfo.skipped>0?' · '+syncInfo.skipped+'⚠':''}  · {syncInfo.time.toLocaleTimeString('de-DE')}</span>}
                         <div className="flex items-center gap-1 ml-2" style={{background:'rgba(255,255,255,0.06)',borderRadius:8,padding:'2px 4px'}}>
                             <button onClick={()=>adjustZoom(-0.1)} className="w-8 h-8 rounded-lg text-lg font-black text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center">−</button>
