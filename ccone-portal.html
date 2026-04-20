@@ -286,7 +286,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.3.4';
+        const APP_VERSION = '6.3.5';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -13946,6 +13946,7 @@ Regeln:
             const[vnrData,setVnrData]=useState(null);
             const[ekdData,setEkdData]=useState(null);
             const[excelData,setExcelData]=useState([]);
+            const[excelLastFetch,setExcelLastFetch]=useState(null);
             const[excelSyncStatus,setExcelSyncStatus]=useState(null);
             const[lastUpdate,setLastUpdate]=useState(null);
             const[ekdStandort,setEkdStandort]=useState('alle');
@@ -14012,7 +14013,7 @@ Regeln:
                         termine:excelAgents.reduce((s,a)=>s+(a.termin||0),0),
                         no_success:excelAgents.reduce((s,a)=>s+(a.no_success||0),0),
                         gespraeche:0,beendet:0,ne:0};
-                    return{agents:excelAgents,summary:sm,updatedAt:new Date().toISOString()};
+                    return{agents:excelAgents,summary:sm,updatedAt:excelLastFetch||new Date().toISOString()};
                 }
                 /* Beide Quellen: Excel-Werte in Bookmarklet-Agents einmergen */
                 var merged=(ekdData.agents||[]).map(a=>{
@@ -14041,8 +14042,8 @@ Regeln:
                     gespraeche:merged.reduce((s,a)=>s+(a.gespraeche||0),0),
                     beendet:merged.reduce((s,a)=>s+(a.beendet||0),0),
                     ne:merged.reduce((s,a)=>s+(a.ne||0),0)};
-                return{...ekdData,agents:merged,summary:sm};
-            },[ekdData,excelData]);
+                return{...ekdData,agents:merged,summary:sm,updatedAt:excelLastFetch||ekdData.updatedAt};
+            },[ekdData,excelData,excelLastFetch]);
 
             // EKD Daten nach Standort filtern
             const filteredEkdData=React.useMemo(()=>{
@@ -14100,15 +14101,15 @@ Regeln:
                     const today=new Date().toISOString().slice(0,10);
                     const fetchExcel=async()=>{try{
                         const r=await fetch(SUPABASE_URL+'/rest/v1/excel_kennzahlen?datum=eq.'+today+'&select=name,standort,no_success,termin,termin_quote,updated_at',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
-                        if(r.ok){const d=await r.json();setExcelData(d)}
+                        if(r.ok){const d=await r.json();setExcelData(d);setExcelLastFetch(new Date().toISOString())}
                     }catch(e){}};
                     const fetchSyncStatus=async()=>{try{
                         const r=await fetch(SUPABASE_URL+'/rest/v1/sync_status?source=eq.sharepoint-excel&select=last_success,status,rows_synced',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(r.ok){const d=await r.json();if(d[0])setExcelSyncStatus(d[0])}
                     }catch(e){}};
                     fetchExcel();fetchSyncStatus();
-                    polls.push(setInterval(fetchExcel,60000));/* Excel alle 60s prüfen */
-                    polls.push(setInterval(fetchSyncStatus,60000));
+                    polls.push(setInterval(fetchExcel,900000));/* Excel alle 15 Min prüfen */
+                    polls.push(setInterval(fetchSyncStatus,900000));
                 }
                 return()=>polls.forEach(p=>clearInterval(p));
             },[mode]);
