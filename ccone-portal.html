@@ -286,7 +286,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.3.6';
+        const APP_VERSION = '6.3.7';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14094,11 +14094,14 @@ Regeln:
                 if(mode==='ekd'||mode==='both'){
                     const fetchEkd=async()=>{try{
                         const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.liveDashboard_ekd&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
-                        if(r.ok){const d=await r.json();if(d[0]&&d[0].value){setEkdData(d[0].value);setLastUpdate(new Date())}}
+                        if(r.ok){const d=await r.json();if(d[0]&&d[0].value){
+                            if(d[0].value.cleared){setEkdData(null);setLastUpdate(null)}
+                            else{setEkdData(d[0].value);setLastUpdate(new Date())}
+                        }}
                     }catch(e){}};
-                    fetchEkd();polls.push(setInterval(fetchEkd,10000));/* VIER alle 10 Sek */
+                    fetchEkd();polls.push(setInterval(fetchEkd,60000));/* VIER alle 60 Sek */
                     /* Excel-Kennzahlen aus Supabase holen (nur heutiges Datum) */
-                    const today=new Date().toISOString().slice(0,10);
+                    const now=new Date();const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
                     const fetchExcel=async()=>{try{
                         const r=await fetch(SUPABASE_URL+'/rest/v1/excel_kennzahlen?datum=eq.'+today+'&select=name,standort,no_success,termin,termin_quote,updated_at',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(r.ok){const d=await r.json();setExcelData(d);setExcelLastFetch(new Date().toISOString())}
@@ -14126,7 +14129,13 @@ Regeln:
                     console.log('EKD-Daten gelöscht (alle PCs)');
                 }catch(e){console.error('Löschen fehlgeschlagen',e)}
             };
-            const refreshEkdData=()=>{if(window._ekdRefresh)window._ekdRefresh()};
+            const refreshEkdData=async()=>{
+                /* cleared-Flag in Supabase entfernen, damit alle PCs wieder Daten sehen */
+                try{
+                    await fetch(SUPABASE_URL+'/rest/v1/ccone_data?on_conflict=key',{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({key:'liveDashboard_ekd',value:{agents:[],summary:{total:0,termine:0,gespraeche:0,beendet:0,ne:0},updatedAt:new Date().toISOString()}})});
+                }catch(e){}
+                if(window._ekdRefresh)window._ekdRefresh();
+            };
 
             /* Auto-Sync: EKD Termine aus Dashboard in Portal übertragen */
             const lastSyncRef=useRef('');
@@ -14453,9 +14462,9 @@ Regeln:
                     <div className="flex-1 overflow-y-auto px-4 pb-4">
                         {activeAgents.length===0?(
                             <div className="flex items-center justify-center h-full"><div className="text-center">
-                                <div style={{fontSize:56,opacity:0.3}}>{isLive?'📡':'📄'}</div>
-                                <p className="text-slate-400 text-lg mt-3 font-medium">{isEkd?'Warte auf Statistik-Daten...':'Warte auf Daten vom Bookmarklet...'}</p>
-                                <p className="text-slate-600 text-base mt-1">{isEkd?'EKD-Bookmarklet auf der VIER Statistik-Seite starten':'Bookmarklet auf der Telefonanlage klicken'}</p>
+                                <div style={{fontSize:56,opacity:0.3}}>{isEkd?'📅':'📡'}</div>
+                                <p className="text-slate-400 text-lg mt-3 font-medium">{isEkd?'Noch keine Termine bisher abgeschlossen':'Warte auf Daten vom Bookmarklet...'}</p>
+                                <p className="text-slate-600 text-base mt-1">{isEkd?'Termine erscheinen automatisch sobald Daten verfügbar sind':'Bookmarklet auf der Telefonanlage klicken'}</p>
                             </div></div>
                         ):(
                             <div className={'grid gap-3 grid-cols-'+(stackedList?1:fullWidth?(n<=3?2:n<=6?3:4):(n<=2?1:n<=4?2:3))}>
