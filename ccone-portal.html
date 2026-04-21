@@ -286,7 +286,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.3.7';
+        const APP_VERSION = '6.3.8';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14111,8 +14111,8 @@ Regeln:
                         if(r.ok){const d=await r.json();if(d[0])setExcelSyncStatus(d[0])}
                     }catch(e){}};
                     fetchExcel();fetchSyncStatus();
-                    polls.push(setInterval(fetchExcel,900000));/* Excel alle 15 Min */
-                    polls.push(setInterval(fetchSyncStatus,900000));
+                    polls.push(setInterval(fetchExcel,300000));/* Excel alle 5 Min */
+                    polls.push(setInterval(fetchSyncStatus,300000));
                     /* Fetch-Funktionen für manuelle Buttons speichern */
                     window._ekdRefresh=()=>{fetchEkd();fetchExcel();fetchSyncStatus()};
                 }
@@ -14397,7 +14397,7 @@ Regeln:
                 const[countdownWarning,setCountdownWarning]=useState(false);
                 useEffect(()=>{
                     if(!isEkd||!isLive)return;
-                    const intervalMs=900000;/* 15 Min */
+                    const intervalMs=300000;/* 5 Min */
                     const warnMs=60000;/* letzte 1 Min = Warnung */
                     const tick=()=>{
                         if(!data?.updatedAt){setCountdown('');setCountdownWarning(false);return}
@@ -14413,7 +14413,7 @@ Regeln:
                     return()=>clearInterval(t);
                 },[data?.updatedAt,isEkd,isLive]);
 
-                const staleMs=isEkd?900000:60000;
+                const staleMs=isEkd?300000:60000;
                 const stale=isEkd?countdownWarning:(data?.updatedAt?(Date.now()-new Date(data.updatedAt).getTime()>staleMs):true);
                 // Auto-adjust: Spalten basierend auf Agent-Anzahl + Breite
                 const n=activeAgents.length;
