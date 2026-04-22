@@ -286,7 +286,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.3.9';
+        const APP_VERSION = '6.4.0';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -13953,6 +13953,55 @@ Regeln:
             const fileRef=useRef(null);
             const vnrCacheRef=useRef({});
 
+            /* Feierabend-Zeitsteuerung */
+            const[scheduleStart,setScheduleStart]=useState('08:00');
+            const[scheduleEnd,setScheduleEnd]=useState('17:30');
+            const[feierabend,setFeierabend]=useState(false);
+            const[showSchedule,setShowSchedule]=useState(false);
+            const feierabendRef=useRef(false);
+
+            /* Zeitplan aus Supabase laden */
+            useEffect(()=>{
+                const loadSchedule=async()=>{try{
+                    const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardSchedule&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                    if(r.ok){const d=await r.json();if(d[0]&&d[0].value){
+                        setScheduleStart(d[0].value.start||'08:00');
+                        setScheduleEnd(d[0].value.end||'17:30');
+                    }}
+                }catch(e){}};
+                loadSchedule();
+            },[]);
+
+            /* Zeitplan speichern */
+            const saveSchedule=async(start,end)=>{
+                setScheduleStart(start);setScheduleEnd(end);
+                try{
+                    await fetch(SUPABASE_URL+'/rest/v1/ccone_data?on_conflict=key',{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({key:'dashboardSchedule',value:{start,end}})});
+                    showNotification('Zeitplan gespeichert: '+start+' - '+end);
+                }catch(e){showNotification('Fehler beim Speichern','error')}
+                setShowSchedule(false);
+            };
+
+            /* Feierabend-Check jede Minute */
+            useEffect(()=>{
+                const check=()=>{
+                    var now=new Date();
+                    var hhmm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+                    var isActive=hhmm>=scheduleStart&&hhmm<scheduleEnd;
+                    var wasFeiertag=feierabendRef.current;
+                    feierabendRef.current=!isActive;
+                    setFeierabend(!isActive);
+                    /* Wenn gerade in Feierabend gewechselt: Daten leeren fuer alle */
+                    if(!isActive&&!wasFeiertag){
+                        setEkdData(null);setExcelData([]);setVnrData(null);setLastUpdate(null);
+                        fetch(SUPABASE_URL+'/rest/v1/ccone_data?on_conflict=key',{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({key:'liveDashboard_ekd',value:{agents:[],summary:{total:0},updatedAt:null,cleared:true}})}).catch(()=>{});
+                    }
+                };
+                check();
+                var t=setInterval(check,60000);
+                return()=>clearInterval(t);
+            },[scheduleStart,scheduleEnd]);
+
             const mergeVnrData=(raw)=>{
                 if(!raw||!raw.agents)return raw;
                 var cache=vnrCacheRef.current;
@@ -14082,17 +14131,17 @@ Regeln:
 
             // Poll from Supabase based on mode
             useEffect(()=>{
-                if(!mode)return;
+                if(!mode||feierabend)return;
                 const polls=[];
                 if(mode==='vnr'||mode==='both'){
-                    const fetchVnr=async()=>{try{
+                    const fetchVnr=async()=>{if(feierabendRef.current)return;try{
                         const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.liveDashboard_vnr&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(r.ok){const d=await r.json();if(d[0]&&d[0].value){setVnrData(mergeVnrData(d[0].value));setLastUpdate(new Date())}}
                     }catch(e){}};
                     fetchVnr();polls.push(setInterval(fetchVnr,5000));
                 }
                 if(mode==='ekd'||mode==='both'){
-                    const fetchEkd=async()=>{try{
+                    const fetchEkd=async()=>{if(feierabendRef.current)return;try{
                         const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.liveDashboard_ekd&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(r.ok){const d=await r.json();if(d[0]&&d[0].value){
                             if(d[0].value.cleared){setEkdData(null);setLastUpdate(null)}
@@ -14102,11 +14151,11 @@ Regeln:
                     fetchEkd();polls.push(setInterval(fetchEkd,60000));/* VIER alle 60 Sek */
                     /* Excel-Kennzahlen aus Supabase holen (nur heutiges Datum) */
                     const now=new Date();const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-                    const fetchExcel=async()=>{try{
+                    const fetchExcel=async()=>{if(feierabendRef.current)return;try{
                         const r=await fetch(SUPABASE_URL+'/rest/v1/excel_kennzahlen?datum=eq.'+today+'&select=name,standort,no_success,termin,termin_quote,updated_at',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(r.ok){const d=await r.json();setExcelData(d);setExcelLastFetch(new Date().toISOString())}
                     }catch(e){}};
-                    const fetchSyncStatus=async()=>{try{
+                    const fetchSyncStatus=async()=>{if(feierabendRef.current)return;try{
                         const r=await fetch(SUPABASE_URL+'/rest/v1/sync_status?source=eq.sharepoint-excel&select=last_success,status,rows_synced',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(r.ok){const d=await r.json();if(d[0])setExcelSyncStatus(d[0])}
                     }catch(e){}};
@@ -14117,7 +14166,7 @@ Regeln:
                     window._ekdRefresh=()=>{fetchEkd();fetchExcel();fetchSyncStatus()};
                 }
                 return()=>polls.forEach(p=>clearInterval(p));
-            },[mode]);
+            },[mode,feierabend]);
 
             /* Daten löschen / erneuern */
             const clearEkdData=async()=>{
@@ -14538,8 +14587,29 @@ Regeln:
                             <span className="text-sm text-slate-400 font-bold min-w-[40px] text-center">{Math.round(zoom*100)}%</span>
                             <button onClick={()=>adjustZoom(0.1)} className="w-8 h-8 rounded-lg text-lg font-black text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center">+</button>
                         </div>
+                        <button onClick={()=>setShowSchedule(!showSchedule)} className="px-3 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(139,92,246,0.1)',color:'#a78bfa',border:'1px solid rgba(139,92,246,0.2)'}}>🕐 {scheduleStart}-{scheduleEnd}</button>
                     </div>
                 </div>
+                {/* Zeitplan-Einstellungen */}
+                {showSchedule&&<div className="px-5 py-3 flex items-center gap-4 flex-shrink-0" style={{background:'rgba(139,92,246,0.08)',borderBottom:'1px solid rgba(139,92,246,0.2)'}}>
+                    <span className="text-sm text-purple-300 font-bold">🕐 Arbeitszeiten:</span>
+                    <label className="text-sm text-slate-400">Start:</label>
+                    <input type="time" defaultValue={scheduleStart} id="sched-start" className="px-2 py-1 rounded text-sm" style={{background:'rgba(255,255,255,0.1)',color:'#fff',border:'1px solid rgba(255,255,255,0.2)'}}/>
+                    <label className="text-sm text-slate-400">Ende:</label>
+                    <input type="time" defaultValue={scheduleEnd} id="sched-end" className="px-2 py-1 rounded text-sm" style={{background:'rgba(255,255,255,0.1)',color:'#fff',border:'1px solid rgba(255,255,255,0.2)'}}/>
+                    <button onClick={()=>{var s=document.getElementById('sched-start').value;var e=document.getElementById('sched-end').value;if(s&&e)saveSchedule(s,e)}} className="px-4 py-1.5 rounded-lg text-sm font-bold" style={{background:'rgba(16,185,129,0.2)',color:'#10b981',border:'1px solid rgba(16,185,129,0.3)'}}>💾 Speichern</button>
+                    <button onClick={()=>setShowSchedule(false)} className="px-3 py-1.5 rounded-lg text-sm font-bold text-slate-500 hover:text-white">✕</button>
+                </div>}
+                {/* Feierabend-Overlay */}
+                {feierabend&&mode&&<div className="fixed inset-0 z-[9998] flex items-center justify-center" style={{background:'rgba(0,0,0,0.92)'}}>
+                    <div className="text-center">
+                        <div style={{fontSize:80,marginBottom:20}}>🌙</div>
+                        <h2 className="text-white font-black text-4xl mb-3">Feierabend</h2>
+                        <p className="text-slate-400 text-xl mb-2">Dashboard deaktiviert bis {scheduleStart} Uhr</p>
+                        <p className="text-slate-600 text-base mb-6">Arbeitszeit: {scheduleStart} - {scheduleEnd}</p>
+                        <button onClick={()=>{setFeierabend(false);feierabendRef.current=false;if(window._ekdRefresh)window._ekdRefresh()}} className="px-6 py-3 rounded-xl text-base font-bold" style={{background:'rgba(139,92,246,0.2)',color:'#a78bfa',border:'1px solid rgba(139,92,246,0.3)'}}>🔓 Trotzdem aktivieren</button>
+                    </div>
+                </div>}
                 <div className="flex flex-1 overflow-hidden" style={{transformOrigin:'top left',transform:'scale('+zoom+')',width:(100/zoom)+'%',height:(100/zoom)+'%'}}>
                     {(mode==='vnr'||mode==='both')&&<Panel title="VNR" data={vnrData} color="#10b981" isLive={true} isEkd={false} fullWidth={mode==='vnr'} stackedList={mode==='both'} onReset={()=>{vnrCacheRef.current={};setVnrData(null)}}/>}
                     {mode==='both'&&<div className="w-px flex-shrink-0" style={{background:'rgba(255,255,255,0.1)'}}/>}
