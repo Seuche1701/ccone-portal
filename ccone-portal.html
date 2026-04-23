@@ -286,7 +286,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.4.0';
+        const APP_VERSION = '6.4.1';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14601,15 +14601,27 @@ Regeln:
                     <button onClick={()=>setShowSchedule(false)} className="px-3 py-1.5 rounded-lg text-sm font-bold text-slate-500 hover:text-white">✕</button>
                 </div>}
                 {/* Feierabend-Overlay */}
-                {feierabend&&mode&&<div className="fixed inset-0 z-[9998] flex items-center justify-center" style={{background:'rgba(0,0,0,0.92)'}}>
-                    <div className="text-center">
-                        <div style={{fontSize:80,marginBottom:20}}>🌙</div>
-                        <h2 className="text-white font-black text-4xl mb-3">Feierabend</h2>
-                        <p className="text-slate-400 text-xl mb-2">Dashboard deaktiviert bis {scheduleStart} Uhr</p>
-                        <p className="text-slate-600 text-base mb-6">Arbeitszeit: {scheduleStart} - {scheduleEnd}</p>
-                        <button onClick={()=>{setFeierabend(false);feierabendRef.current=false;if(window._ekdRefresh)window._ekdRefresh()}} className="px-6 py-3 rounded-xl text-base font-bold" style={{background:'rgba(139,92,246,0.2)',color:'#a78bfa',border:'1px solid rgba(139,92,246,0.3)'}}>🔓 Trotzdem aktivieren</button>
+                {feierabend&&mode&&(()=>{
+                    var nowH=new Date().getHours();
+                    var startH=parseInt(scheduleStart.split(':')[0])||8;
+                    var isMorning=nowH>=startH-2&&nowH<startH+2;
+                    return <div className="fixed inset-0 z-[9998] flex items-center justify-center" style={{background:'rgba(0,0,0,0.92)'}}>
+                        <div className="text-center">
+                            {isMorning?(<>
+                                <div style={{fontSize:80,marginBottom:20}}>☀️</div>
+                                <h2 className="text-white font-black text-4xl mb-3">Guten Morgen!</h2>
+                                <p className="text-amber-300 text-xl mb-2">Eine erfolgreiche Schicht wünsche ich euch!</p>
+                                <p className="text-slate-400 text-lg mb-6">Das Dashboard ist ab {scheduleStart} Uhr online</p>
+                            </>):(<>
+                                <div style={{fontSize:80,marginBottom:20}}>🌙</div>
+                                <h2 className="text-white font-black text-4xl mb-3">Feierabend</h2>
+                                <p className="text-slate-400 text-xl mb-2">Dashboard deaktiviert bis {scheduleStart} Uhr</p>
+                                <p className="text-slate-600 text-base mb-6">Arbeitszeit: {scheduleStart} - {scheduleEnd}</p>
+                            </>)}
+                            <button onClick={()=>{setFeierabend(false);feierabendRef.current=false;if(window._ekdRefresh)window._ekdRefresh()}} className="px-6 py-3 rounded-xl text-base font-bold" style={{background:'rgba(139,92,246,0.2)',color:'#a78bfa',border:'1px solid rgba(139,92,246,0.3)'}}>🔓 Trotzdem aktivieren</button>
+                        </div>
                     </div>
-                </div>}
+                })()}
                 <div className="flex flex-1 overflow-hidden" style={{transformOrigin:'top left',transform:'scale('+zoom+')',width:(100/zoom)+'%',height:(100/zoom)+'%'}}>
                     {(mode==='vnr'||mode==='both')&&<Panel title="VNR" data={vnrData} color="#10b981" isLive={true} isEkd={false} fullWidth={mode==='vnr'} stackedList={mode==='both'} onReset={()=>{vnrCacheRef.current={};setVnrData(null)}}/>}
                     {mode==='both'&&<div className="w-px flex-shrink-0" style={{background:'rgba(255,255,255,0.1)'}}/>}
