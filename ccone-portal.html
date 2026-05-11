@@ -286,7 +286,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.4.1';
+        const APP_VERSION = '6.4.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -13948,6 +13948,7 @@ Regeln:
             const[excelData,setExcelData]=useState([]);
             const[excelLastFetch,setExcelLastFetch]=useState(null);
             const[excelSyncStatus,setExcelSyncStatus]=useState(null);
+            const[monatsQuoten,setMonatsQuoten]=useState([]);
             const[lastUpdate,setLastUpdate]=useState(null);
             const[ekdStandort,setEkdStandort]=useState('alle');
             const fileRef=useRef(null);
@@ -14114,6 +14115,26 @@ Regeln:
                 return{...src,agents:agents,summary:sm};
             },[mergedEkdData,ekdStandort,appData?.users]);
 
+            /* Monatsquoten in Agents einmergen */
+            const finalEkdData=React.useMemo(()=>{
+                if(!filteredEkdData)return null;
+                if(!monatsQuoten||monatsQuoten.length===0)return filteredEkdData;
+                var agents=(filteredEkdData.agents||[]).map(a=>{
+                    var nA=normMatch(a.name);
+                    if(nA.length<1)return a;
+                    var found=null;
+                    monatsQuoten.forEach(m=>{
+                        if(found)return;
+                        var nM=normMatch(m.name);if(nM.length<1)return;
+                        var mc=0;nA.forEach(p=>{if(nM.some(x=>x.includes(p)||p.includes(x)))mc++});
+                        if(mc>=Math.min(2,nA.length))found=m;
+                    });
+                    if(found)return{...a,monat_quote:found.termin_quote,monat_termine:found.termin,monat_ns:found.no_success};
+                    return a;
+                });
+                return{...filteredEkdData,agents};
+            },[filteredEkdData,monatsQuoten]);
+
             // Auto-refresh appData alle 15 Sek (still, ohne Notification)
             useEffect(()=>{
                 const poll=setInterval(async()=>{
@@ -14162,8 +14183,15 @@ Regeln:
                     fetchExcel();fetchSyncStatus();
                     polls.push(setInterval(fetchExcel,300000));/* Excel alle 5 Min */
                     polls.push(setInterval(fetchSyncStatus,300000));
+                    /* Monatsquoten laden (einmalig + alle 5 Min) */
+                    const curMonat=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+                    const fetchMonat=async()=>{try{
+                        const r=await fetch(SUPABASE_URL+'/rest/v1/excel_monatsquoten?monat=eq.'+curMonat+'&select=name,standort,termin,no_success,termin_quote',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                        if(r.ok){const d=await r.json();setMonatsQuoten(d)}
+                    }catch(e){}};
+                    fetchMonat();polls.push(setInterval(fetchMonat,300000));
                     /* Fetch-Funktionen für manuelle Buttons speichern */
-                    window._ekdRefresh=()=>{fetchEkd();fetchExcel();fetchSyncStatus()};
+                    window._ekdRefresh=()=>{fetchEkd();fetchExcel();fetchSyncStatus();fetchMonat()};
                 }
                 return()=>polls.forEach(p=>clearInterval(p));
             },[mode,feierabend]);
@@ -14402,6 +14430,10 @@ Regeln:
                                 <div className={"font-black "+numSize} style={{color:'#f97316'}}>{a.no_success||0}</div>
                                 <div className={"font-bold text-slate-500 "+labelSize}>NS</div>
                             </div>
+                            {a.monat_quote!==undefined&&<div className="text-center flex-1" style={{background:'rgba(139,92,246,0.1)',borderRadius:8,padding:'4px 0'}}>
+                                <div className={"font-black "+numSize} style={{color:'#a78bfa'}}>{a.monat_quote}%</div>
+                                <div className={"font-bold text-slate-500 "+labelSize}>Monat</div>
+                            </div>}
                         </div>
                     </div>);
                 }
@@ -14625,7 +14657,7 @@ Regeln:
                 <div className="flex flex-1 overflow-hidden" style={{transformOrigin:'top left',transform:'scale('+zoom+')',width:(100/zoom)+'%',height:(100/zoom)+'%'}}>
                     {(mode==='vnr'||mode==='both')&&<Panel title="VNR" data={vnrData} color="#10b981" isLive={true} isEkd={false} fullWidth={mode==='vnr'} stackedList={mode==='both'} onReset={()=>{vnrCacheRef.current={};setVnrData(null)}}/>}
                     {mode==='both'&&<div className="w-px flex-shrink-0" style={{background:'rgba(255,255,255,0.1)'}}/>}
-                    {(mode==='ekd'||mode==='both')&&<Panel title="EKD" data={filteredEkdData} color="#3b82f6" isLive={true} isEkd={true} onUpload={true} fullWidth={mode==='ekd'} standort={ekdStandort} onStandortChange={setEkdStandort}/>}
+                    {(mode==='ekd'||mode==='both')&&<Panel title="EKD" data={finalEkdData} color="#3b82f6" isLive={true} isEkd={true} onUpload={true} fullWidth={mode==='ekd'} standort={ekdStandort} onStandortChange={setEkdStandort}/>}
                 </div>
                 {/* Dashboard-Bild Overlay */}
                 {dashImg&&(()=>{const animStyle={animationName:dashImgPhase,animationDuration:dashImgPhase.includes('Out')?'1.5s':'1s',animationFillMode:'forwards',animationTimingFunction:'cubic-bezier(0.34,1.56,0.64,1)'};const mediaStyle={maxWidth:'90vw',maxHeight:'85vh',borderRadius:16,boxShadow:dashImg.transparent?'none':'0 0 80px rgba(212,175,55,0.4)',...animStyle};const onVideoEnd=()=>{if(dashImgTimerRef.current)clearTimeout(dashImgTimerRef.current);setDashImgPhase(pickAnim(ANIMS_OUT));setTimeout(async()=>{setDashImg(null);setDashImgPhase('');dashImgBusyRef.current=false;try{var rr=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImageQueue&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});var qq=(await rr.json())[0]?.value||[];await fetch(SUPABASE_URL+'/rest/v1/ccone_data',{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({key:'dashboardImageQueue',value:qq.filter(i=>i.id!==dashImg.id)})})}catch(e){}},1500)};return <div style={{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',background:dashImg.transparent?'transparent':'rgba(0,0,0,0.85)',...animStyle}}>{dashImg.isVideo?<video src={dashImg.data} autoPlay muted style={{width:'100vw',height:'100vh',objectFit:'cover',...animStyle}} onEnded={onVideoEnd}/>:<img src={dashImg.data} style={mediaStyle}/>}</div>})()}
