@@ -34,6 +34,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -255,6 +256,7 @@
   
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -280,13 +282,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.4.2';
+        const APP_VERSION = '6.4.3';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -1458,8 +1461,25 @@ function getOrCreateSheet(){
             const[activeTab,setActiveTab]=useState('overview');
             const[editingQuiz,setEditingQuiz]=useState(null);
             const menuItems=[{id:'overview',label:'Übersicht',icon:'chart'},{id:'users',label:'Benutzer',icon:'users'},{id:'quizzes',label:'Lernwelt',icon:'brain'},{id:'assignments',label:'Zielgruppen',icon:'target'},{id:'results',label:'Auswertungen',icon:'award'},{id:'coaching',label:'Coaching',icon:'headphones'},{id:'training',label:'Trainingscenter',icon:'book'},{id:'absence',label:'Abwesenheit',icon:'calendar'},{id:'termine',label:'Termine',icon:'clock'},{id:'spaetschicht',label:'Spätschicht',icon:'clock'},{id:'turnier',label:'Turnier',icon:'trophy'},{id:'news',label:'News',icon:'bell'},{id:'messages',label:'Nachrichten',icon:'chat'},{id:'rewards',label:'Belohnungen',icon:'trophy'},{id:'pausen',label:'Pausen',icon:'coffee'},{id:'storage',label:'Speicher',icon:'database'},{id:'wvlLost',label:'WVL Lost',icon:'target'},{id:'datenschutz',label:'Datenschutz',icon:'eye'},{id:'update',label:'Update',icon:'rocket'}];
+            // === Sidebar-Personalisierung (Admin, pro Browser via localStorage) ===
+            const SB_ORDER_KEY='ccone-sidebar-order',SB_HIDDEN_KEY='ccone-sidebar-hidden';
+            const[sbEdit,setSbEdit]=useState(false);
+            const[sbOrder,setSbOrder]=useState(()=>{try{const s=localStorage.getItem(SB_ORDER_KEY);return s?JSON.parse(s):null}catch(e){return null}});
+            const[sbHidden,setSbHidden]=useState(()=>{try{const s=localStorage.getItem(SB_HIDDEN_KEY);return s?JSON.parse(s):[]}catch(e){return[]}});
+            const[sbDrag,setSbDrag]=useState(null);
+            const[sbOver,setSbOver]=useState(null);
+            useEffect(()=>{try{if(sbOrder)localStorage.setItem(SB_ORDER_KEY,JSON.stringify(sbOrder));else localStorage.removeItem(SB_ORDER_KEY)}catch(e){}},[sbOrder]);
+            useEffect(()=>{try{localStorage.setItem(SB_HIDDEN_KEY,JSON.stringify(sbHidden))}catch(e){}},[sbHidden]);
+            const orderedMenu=React.useMemo(()=>{if(!sbOrder||!Array.isArray(sbOrder))return menuItems;const map=new Map(menuItems.map(m=>[m.id,m]));const out=[];sbOrder.forEach(id=>{if(map.has(id)){out.push(map.get(id));map.delete(id)}});map.forEach(m=>out.push(m));return out},[sbOrder]);
+            const hiddenSet=React.useMemo(()=>new Set(sbHidden||[]),[sbHidden]);
+            const toggleSbHidden=(id)=>setSbHidden(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+            const resetSidebar=()=>{setSbOrder(null);setSbHidden([])};
+            const onSbDrop=(targetId)=>{if(!sbDrag||sbDrag===targetId){setSbDrag(null);setSbOver(null);return}const cur=(sbOrder&&sbOrder.length?sbOrder.slice():orderedMenu.map(m=>m.id));menuItems.forEach(m=>{if(!cur.includes(m.id))cur.push(m.id)});const from=cur.indexOf(sbDrag),to=cur.indexOf(targetId);if(from>-1&&to>-1){cur.splice(from,1);cur.splice(to,0,sbDrag);setSbOrder(cur)}setSbDrag(null);setSbOver(null)};
             // Filter menu items by role/permissions
-            const visibleMenuItems=currentUser.role==='admin'?menuItems:menuItems.filter(m=>(currentUser.adminTabs||[]).includes(m.id));
+            const effectiveAdminMenu=orderedMenu.filter(m=>!hiddenSet.has(m.id));
+            const visibleMenuItems=currentUser.role==='admin'?effectiveAdminMenu:menuItems.filter(m=>(currentUser.adminTabs||[]).includes(m.id));
+            // Im Edit-Modus zeigt die Sidebar auch versteckte Items (zum Wieder-Einblenden)
+            const sidebarRenderItems=currentUser.role==='admin'&&sbEdit?orderedMenu:visibleMenuItems;
             const canSwitchView=['admin','teamleiter','standardbenutzer'].includes(currentUser.role);
             // === STANDORT FILTER ===
             const isAdmin=currentUser.role==='admin';
@@ -1553,10 +1573,10 @@ function getOrCreateSheet(){
                         <div className="w-[700px] h-[700px] rounded-full bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-400 blur-3xl" style={{opacity:0.15}}></div>
                     </div>
                     <div className="w-60 bg-black/80 backdrop-blur-sm border-r border-white/10 flex flex-col fixed left-0 top-0 h-screen overflow-y-auto z-20">
-                        <div className="p-3 border-b border-white/10"><div className="flex items-center gap-2"><div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center"><CConeLogo size={22}/></div><div><h1 className="font-bold text-sm text-white">CCONE PORTAL</h1><p className="text-xs text-slate-500">{currentUser.role==='admin'?'Admin':currentUser.role==='teamleiter'?'Teamleiter':'Standardbenutzer'}{currentUser.standort?' · '+currentUser.standort.charAt(0).toUpperCase()+currentUser.standort.slice(1):''}</p></div></div></div>
+                        <div className="p-3 border-b border-white/10"><div className="flex items-center gap-2"><div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center"><CConeLogo size={22}/></div><div className="flex-1 min-w-0"><h1 className="font-bold text-sm text-white">CCONE PORTAL</h1><p className="text-xs text-slate-500 truncate">{currentUser.role==='admin'?'Admin':currentUser.role==='teamleiter'?'Teamleiter':'Standardbenutzer'}{currentUser.standort?' · '+currentUser.standort.charAt(0).toUpperCase()+currentUser.standort.slice(1):''}</p></div>{isAdmin&&<button onClick={()=>setSbEdit(v=>!v)} title={sbEdit?'Bearbeiten beenden':'Sidebar anpassen'} className="w-7 h-7 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style={{background:sbEdit?'rgba(16,185,129,0.2)':'rgba(255,255,255,0.04)',color:sbEdit?'#34d399':'#94a3b8',border:'1px solid '+(sbEdit?'rgba(16,185,129,0.4)':'rgba(255,255,255,0.08)')}}>{sbEdit?'✓':'✎'}</button>}</div></div>
                         {canSwitchView&&onSwitchView&&<div className="p-2 border-b border-white/10"><button onClick={onSwitchView} className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 font-medium text-xs hover:bg-blue-500/25 border border-blue-500/20">🔄 Zur Agent-Ansicht</button></div>}
                         {isAdmin&&<div className="p-2 border-b border-white/10"><div className="flex items-center gap-2"><span className="text-xs text-slate-500">📍</span><select value={standortFilter} onChange={e=>setStandortFilter(e.target.value)} className="flex-1 px-2 py-1 rounded-lg border border-slate-700 bg-slate-800/80 text-white text-xs font-medium"><option value="alle">Alle Standorte</option><option value="berlin">📍 Berlin</option><option value="chemnitz">📍 Chemnitz</option></select></div></div>}
-                        <nav className="flex-1 p-2 space-y-0.5">{visibleMenuItems.map(item=>{const unreadMsgs=item.id==='messages'?(filteredData.agentMessages||[]).filter(m=>!m.read&&m.direction!=='admin-to-agent').length:0;return(<button key={item.id} onClick={()=>setActiveTab(item.id)} className={`sidebar-item w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left text-sm ${activeTab===item.id?'active text-emerald-400 font-medium bg-emerald-500/20':'text-slate-400 hover:text-white hover:bg-white/5'}`}><Icon name={item.icon} size={16}/>{item.label}{unreadMsgs>0&&<span className="ml-auto px-1.5 py-0.5 rounded-full text-xs font-bold" style={{background:'rgba(59,130,246,0.2)',color:'#60a5fa',fontSize:9}}>{unreadMsgs}</span>}</button>)})}</nav>
+                        <nav className="flex-1 p-2 space-y-0.5">{sidebarRenderItems.map(item=>{const unreadMsgs=item.id==='messages'?(filteredData.agentMessages||[]).filter(m=>!m.read&&m.direction!=='admin-to-agent').length:0;const isHidden=hiddenSet.has(item.id);const isDragOver=sbOver===item.id&&sbDrag&&sbDrag!==item.id;if(isAdmin&&sbEdit){return(<div key={item.id} draggable onDragStart={()=>setSbDrag(item.id)} onDragOver={e=>{e.preventDefault();if(sbOver!==item.id)setSbOver(item.id)}} onDragLeave={()=>setSbOver(o=>o===item.id?null:o)} onDrop={e=>{e.preventDefault();onSbDrop(item.id)}} onDragEnd={()=>{setSbDrag(null);setSbOver(null)}} className="w-full flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm cursor-move" style={{background:isDragOver?'rgba(16,185,129,0.15)':(sbDrag===item.id?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.02)'),border:'1px dashed '+(isDragOver?'rgba(16,185,129,0.5)':'rgba(255,255,255,0.08)'),opacity:isHidden?0.4:1}}><span className="text-slate-500 text-xs px-1" title="Verschieben">⋮⋮</span><Icon name={item.icon} size={14}/><span className="flex-1 text-slate-300 text-xs truncate">{item.label}</span><button onClick={e=>{e.stopPropagation();toggleSbHidden(item.id)}} title={isHidden?'Einblenden':'Ausblenden'} className="w-6 h-6 rounded flex items-center justify-center text-xs flex-shrink-0" style={{background:isHidden?'rgba(239,68,68,0.15)':'rgba(255,255,255,0.04)',color:isHidden?'#fca5a5':'#94a3b8'}}>{isHidden?'🚫':'👁'}</button></div>)}return(<button key={item.id} onClick={()=>setActiveTab(item.id)} className={`sidebar-item w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left text-sm ${activeTab===item.id?'active text-emerald-400 font-medium bg-emerald-500/20':'text-slate-400 hover:text-white hover:bg-white/5'}`}><Icon name={item.icon} size={16}/>{item.label}{unreadMsgs>0&&<span className="ml-auto px-1.5 py-0.5 rounded-full text-xs font-bold" style={{background:'rgba(59,130,246,0.2)',color:'#60a5fa',fontSize:9}}>{unreadMsgs}</span>}</button>)})}{isAdmin&&sbEdit&&<div className="mt-3 pt-3 border-t border-white/10 space-y-1"><p className="text-xs text-slate-500 px-2 mb-1">Ziehen zum Sortieren · Auge zum Ein-/Ausblenden</p><button onClick={resetSidebar} className="w-full px-3 py-1.5 rounded-lg text-xs font-medium" style={{background:'rgba(245,158,11,0.1)',color:'#fbbf24',border:'1px solid rgba(245,158,11,0.3)'}}>↻ Auf Standard zurücksetzen</button><button onClick={()=>setSbEdit(false)} className="w-full px-3 py-1.5 rounded-lg text-xs font-bold" style={{background:'rgba(16,185,129,0.2)',color:'#34d399',border:'1px solid rgba(16,185,129,0.4)'}}>✓ Fertig</button></div>}</nav>
                         <div className="p-2 border-t border-white/10"><button onClick={refreshData} className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 font-medium text-sm hover:bg-emerald-500/30"><Icon name="refresh" size={14}/>Aktualisieren</button></div>
                         {onOpenDashboard&&<div className="p-2 border-t border-white/10"><button onClick={onOpenDashboard} className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 font-medium text-sm hover:bg-amber-500/30">📊 Live-Dashboard</button></div>}
                         <SidebarAudioPlayer showNotification={showNotification}/>
@@ -17173,12 +17193,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -17279,6 +17301,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
