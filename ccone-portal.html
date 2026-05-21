@@ -34,7 +34,6 @@
 
 
 
-
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -256,7 +255,6 @@
   
     
     
-    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -282,14 +280,13 @@
 
 
 
-
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.4.7';
+        const APP_VERSION = '6.4.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -344,7 +341,9 @@
             'Prefer':'resolution=merge-duplicates,return=representation'
         });
         const _sbGet = async () => {
-            const r = await fetch(SUPABASE_URL+'/rest/v1/ccone_data?select=key,value',{headers:_sbHeaders()});
+            // Exclude heavy keys (base64-Bilder) that aren't read from appData anyway.
+            // dashboardImageQueue & memoryImages werden von ihren eigenen Komponenten separat geladen.
+            const r = await fetch(SUPABASE_URL+'/rest/v1/ccone_data?select=key,value&key=not.in.(dashboardImageQueue,memoryImages)',{headers:_sbHeaders()});
             const rows = await r.json();
             const d = {};
             for(const row of rows) d[row.key] = row.value;
@@ -17257,14 +17256,12 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
-    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
-
 
 
 
@@ -17365,7 +17362,6 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
-    
     
     
     
