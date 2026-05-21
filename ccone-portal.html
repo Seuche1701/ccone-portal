@@ -289,7 +289,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.4.6';
+        const APP_VERSION = '6.4.7';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -2617,7 +2617,24 @@ function getOrCreateSheet(){
             const allDone=notYetDone.length===0&&rotationAgents.length>0;
             const nextUp=notYetDone.length>0?notYetDone[0]:null;
 
-            const resetRotation=()=>{save({completedAgents:[]});showNotification('Rotation zurückgesetzt!')};
+            const resetRotation=()=>{save({completedAgents:[]});showNotification('Statistik zurückgesetzt!')};
+
+            const currentWeekKey=fmtWeek(today);
+            const cleanupPastBookings=()=>{
+                const all=sp.bookings||[];
+                const future=all.filter(b=>b.weekKey>=currentWeekKey);
+                const removed=all.length-future.length;
+                if(removed===0){showNotification('Keine vergangenen Buchungen vorhanden','error');return}
+                if(!confirm(removed+' vergangene Buchung(en) entfernen?'))return;
+                save({bookings:future});
+                showNotification(removed+' vergangene Buchung(en) entfernt');
+            };
+            const resetAllBookings=()=>{
+                if((sp.bookings||[]).length===0){showNotification('Keine Buchungen vorhanden','error');return}
+                if(!confirm('WIRKLICH ALLE '+(sp.bookings||[]).length+' Buchungen löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden.'))return;
+                save({bookings:[],completedAgents:[]});
+                showNotification('Alle Buchungen und Statistik gelöscht');
+            };
 
             const removeBooking=(weekKey,agentId)=>{
                 const nb=(sp.bookings||[]).filter(b=>!(b.weekKey===weekKey&&b.agentId===agentId));
@@ -2697,19 +2714,19 @@ function getOrCreateSheet(){
                     </div>
                 </div>
 
-                {/* Rotation Status */}
+                {/* Buchungs-Statistik */}
                 <div className="glass-card rounded-xl p-4 mb-4">
                     <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-bold text-slate-300">🔄 Rotation</span>
-                        {allDone&&<button onClick={resetRotation} className="px-2 py-1 rounded text-xs font-bold" style={{background:'rgba(16,185,129,0.15)',color:'#6ee7b7',border:'1px solid rgba(16,185,129,0.3)'}}>↻ Neue Runde</button>}
+                        <span className="text-sm font-bold text-slate-300">📊 Wer hat schon gebucht</span>
+                        <button onClick={resetRotation} className="px-2 py-1 rounded text-xs font-bold" style={{background:'rgba(16,185,129,0.15)',color:'#6ee7b7',border:'1px solid rgba(16,185,129,0.3)'}}>↻ Statistik zurücksetzen</button>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                        {rotationAgents.map(u=>{const done=completed.includes(u.id);const isNext=nextUp?.id===u.id;return(
-                            <span key={u.id} className="px-2 py-1 rounded-lg text-xs font-medium" style={{background:done?'rgba(16,185,129,0.15)':isNext?'rgba(249,115,22,0.2)':'rgba(255,255,255,0.04)',border:'1px solid '+(done?'rgba(16,185,129,0.3)':isNext?'rgba(249,115,22,0.4)':'rgba(255,255,255,0.08)'),color:done?'#6ee7b7':isNext?'#fb923c':'#666'}}>{done?'✅ ':isNext?'👉 ':''}{u.name}</span>
+                        {rotationAgents.map(u=>{const done=completed.includes(u.id);return(
+                            <span key={u.id} className="px-2 py-1 rounded-lg text-xs font-medium" style={{background:done?'rgba(16,185,129,0.15)':'rgba(255,255,255,0.04)',border:'1px solid '+(done?'rgba(16,185,129,0.3)':'rgba(255,255,255,0.08)'),color:done?'#6ee7b7':'#666'}}>{done?'✅ ':''}{u.name}</span>
                         )})}
                     </div>
-                    {allDone&&<p className="text-xs text-emerald-400 mt-2">✅ Alle waren dran — bereit für neue Runde!</p>}
-                    {rotationAgents.length===0&&<p className="text-xs text-slate-500">Keine Agents in der Rotation{permAgents.length>0?' (alle sind Dauerspätschicht)':''}</p>}
+                    {allDone&&<p className="text-xs text-emerald-400 mt-2">✅ Alle Agents haben mindestens einmal Spätschicht gebucht</p>}
+                    {rotationAgents.length===0&&<p className="text-xs text-slate-500">Keine Agents{permAgents.length>0?' (alle sind Dauerspätschicht)':''}</p>}
                 </div>
 
                 {/* Week Calendar */}
@@ -2782,9 +2799,12 @@ function getOrCreateSheet(){
                 {/* Export */}
                 {(sp.bookings||[]).length>0&&(
                     <div className="glass-card rounded-xl p-4 mt-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
                             <div><span className="text-sm font-bold text-slate-300">📊 Auswertung</span><p className="text-xs text-slate-500">{(sp.bookings||[]).length} Buchungen</p></div>
-                            <button onClick={()=>{
+                            <div className="flex gap-2 flex-wrap">
+                                <button onClick={cleanupPastBookings} title="Entfernt alle Buchungen vergangener Wochen" className="px-3 py-2 rounded-xl font-bold text-xs" style={{background:'rgba(249,115,22,0.15)',border:'1.5px solid rgba(249,115,22,0.4)',color:'#fb923c'}}>🧹 Aufräumen</button>
+                                <button onClick={resetAllBookings} title="Löscht ALLE Buchungen und die Statistik" className="px-3 py-2 rounded-xl font-bold text-xs" style={{background:'rgba(239,68,68,0.15)',border:'1.5px solid rgba(239,68,68,0.4)',color:'#fca5a5'}}>🗑️ Alles löschen</button>
+                                <button onClick={()=>{
 
                                 const header='Woche;Agent;Typ;Gebucht am;Gesperrt;Samstag\n';
                                 const bkRows=(sp.bookings||[]).sort((a,b)=>a.weekKey.localeCompare(b.weekKey)).map(b=>b.weekKey+';'+b.agentName+';Rotation;'+new Date(b.bookedAt).toLocaleDateString('de-DE')+';'+(b.locked?'Ja':'Nein')+';'+(sp.saturdayEnabled?'Ja':'Nein'));
@@ -2797,6 +2817,7 @@ function getOrCreateSheet(){
                                 a.click();URL.revokeObjectURL(url);
                                 showNotification('CSV exportiert!');
                             }} className="px-4 py-2 rounded-xl font-bold text-sm" style={{background:'linear-gradient(135deg,rgba(16,185,129,0.3),rgba(5,150,105,0.3))',border:'1.5px solid rgba(16,185,129,0.5)',color:'#6ee7b7'}}>📥 CSV Export</button>
+                            </div>
                         </div>
                         <div className="mt-3 pt-3" style={{borderTop:'1px solid rgba(255,255,255,0.06)'}}>
                             <table className="w-full text-xs">
@@ -13713,7 +13734,6 @@ Regeln:
                     const thisMonday=getMonday(new Date());
                     const myBookings=(sp.bookings||[]).filter(b=>b.agentId===currentUser.id);
                     const completed=(sp.completedAgents||[]);
-                    const myTurn=!isPermanent&&!completed.includes(currentUser.id);
                     const weekOv=sp.weekOverrides||{};
                     const getSlots=(wk)=>weekOv[wk]!==undefined?weekOv[wk]:(sp.agentsPerWeek||2);
                     const weeks=[];
@@ -13752,15 +13772,13 @@ Regeln:
                                     <p className="text-sm text-emerald-300 font-bold">✅ Du bist gebucht: {myWeek?.label||'—'}</p>
                                     {myBookings[0]?.locked&&<p className="text-xs text-slate-400 mt-1">🔒 Gesperrt — nur Admin kann ändern</p>}
                                 </div>
-                            ):myTurn?(
-                                <div className="mb-2"><p className="text-xs text-orange-300 mb-2">👉 Du bist in der Rotation dran — bitte wähle eine Woche:</p></div>
                             ):(
-                                <div className="mb-2"><p className="text-xs text-slate-400 mb-2">✅ Du warst diese Runde bereits dran</p></div>
+                                <div className="mb-2"><p className="text-xs text-orange-300 mb-2">👉 Wähle eine Woche für deine Spätschicht:</p></div>
                             )}
                             {!isPermanent&&<div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                 {weeks.map(w=>{
                                     const mine=w.bookings.some(b=>b.agentId===currentUser.id);
-                                    const canBook=!hasBooked&&!w.full&&myTurn;
+                                    const canBook=!hasBooked&&!w.full;
                                     const allUsers=appData.users||[];
                                     return(
                                         <div key={w.key} className="p-2 rounded-lg text-center" style={{background:mine?'rgba(16,185,129,0.15)':w.full?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.04)',border:'1px solid '+(mine?'rgba(16,185,129,0.4)':w.full?'rgba(255,255,255,0.04)':'rgba(99,102,241,0.2)'),opacity:w.full&&!mine?0.5:1}}>
