@@ -289,7 +289,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.4.4';
+        const APP_VERSION = '6.4.5';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -536,17 +536,20 @@
                 });
             },
             async getUnoGames() {
-                if (!GOOGLE_SCRIPT_URL) throw new Error('Keine URL');
-                const response = await fetch(GOOGLE_SCRIPT_URL + '?action=getUnoGames&t=' + Date.now());
-                return await response.json();
+                const r = await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.unoGames&select=value',{
+                    headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}
+                });
+                if(!r.ok) throw new Error('Supabase getUnoGames HTTP '+r.status);
+                const d = await r.json();
+                return d[0]?.value || [];
             },
             async saveUnoGames(games) {
-                if (!GOOGLE_SCRIPT_URL) throw new Error('Keine URL');
-                await fetch(GOOGLE_SCRIPT_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    body: JSON.stringify({ action: 'saveUnoGames', data: games })
+                const r = await fetch(SUPABASE_URL+'/rest/v1/ccone_data?on_conflict=key',{
+                    method:'POST',
+                    headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+                    body:JSON.stringify({key:'unoGames',value:games})
                 });
+                if(!r.ok) throw new Error('Supabase saveUnoGames HTTP '+r.status);
             },
             async getPokerGames() {
                 if (!GOOGLE_SCRIPT_URL) throw new Error('Keine URL');
@@ -9939,8 +9942,7 @@ Regeln:
             syncRef.current=async()=>{
                 try{
                     if(Date.now()-lastLocalUpdate.current<2000)return;
-                    const resp=await fetch(GOOGLE_SCRIPT_URL+'?action=getUnoGames&t='+Date.now());
-                    const games=await resp.json();
+                    const games=await api.getUnoGames();
                     if(!Array.isArray(games))return;
                     // Direct gameData update for lobby/playing (most important!)
                     const gd=gameDataRef.current;
