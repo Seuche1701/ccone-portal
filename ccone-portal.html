@@ -34,6 +34,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -255,6 +256,7 @@
   
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -280,13 +282,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.4.2';
+        const APP_VERSION = '6.5.0';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -2190,12 +2193,16 @@ function getOrCreateSheet(){
                             e.preventDefault();
                             const file=items[i].getAsFile();if(!file)return;
                             if(file.size>5*1024*1024){showNotification('Bild zu groß (max 5MB)','error');return}
-                            if(imgQueue.length>=10){showNotification('Max 10 Einträge in der Queue','error');return}
                             const reader=new FileReader();
                             reader.onload=async(ev)=>{
                                 try{
-                                    const item={id:Date.now().toString(),data:ev.target.result,duration:imgDuration,scheduledTime:imgTime||'',filename:'Clipboard '+new Date().toLocaleTimeString('de-DE'),uploadedAt:new Date().toISOString(),shown:false,isVideo:false,transparent:imgTransparent};
-                                    await saveQueue([...imgQueue,item]);
+                                    // Fresh fetch der aktuellen Queue aus Supabase (verhindert race conditions bei schnellem Paste)
+                                    const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImageQueue&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                                    const d=await r.json();
+                                    const currentQueue=d[0]?.value||[];
+                                    if(currentQueue.length>=10){showNotification('Max 10 Einträge in der Queue','error');return}
+                                    const item={id:Date.now().toString()+'-'+Math.random().toString(36).slice(2,7),data:ev.target.result,duration:imgDuration,scheduledTime:imgTime||'',filename:'Clipboard '+new Date().toLocaleTimeString('de-DE'),uploadedAt:new Date().toISOString(),shown:false,isVideo:false,transparent:imgTransparent};
+                                    await saveQueue([...currentQueue,item]);
                                     showNotification('📋 Bild aus Zwischenablage hinzugefügt!'+(imgDuration===-1?' (Permanent)':imgTime?' Geplant für '+imgTime:' Sofort'));
                                 }catch(err){showNotification('Fehler: '+err.message,'error')}
                             };
@@ -2206,7 +2213,7 @@ function getOrCreateSheet(){
                 };
                 document.addEventListener('paste',onPaste);
                 return()=>document.removeEventListener('paste',onPaste);
-            },[imgQueue,imgDuration,imgTime,imgTransparent]);
+            },[imgDuration,imgTime,imgTransparent]);
             const fmtDur=(s)=>s===-1?'📌 Permanent (bis manuell beendet)':s>=60?Math.floor(s/60)+'m'+(s%60?s%60+'s':''):s+'s';
 
             return(
@@ -17256,12 +17263,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -17362,6 +17371,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
