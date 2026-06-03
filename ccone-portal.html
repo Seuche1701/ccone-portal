@@ -36,6 +36,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -259,6 +260,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -286,13 +288,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.5.1';
+        const APP_VERSION = '6.5.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -747,9 +750,9 @@ function getData(){
     var keys=['customTemplates','unoGames','pokerGames','results','coachingSessions',
       'assignments','agents','absences','projects','customKeywords','rewardsConfig',
       'rewardsPoints','rewardsHistory','rewardsPurchases','termine','termineConfig','news','monopolyGames',
-      'pausenConfig','pausenAwards','trainingMaterials','trainingMode','spaetschicht','wheelTournaments','onlineUsers','agentMessages','wvlLost'];
+      'pausenConfig','pausenAwards','trainingMaterials','trainingMode','spaetschicht','wheelTournaments','onlineUsers','agentMessages','wvlLost','lotteryAnnounce'];
     var objKeys=['customTemplates','customKeywords','rewardsConfig','rewardsPoints',
-      'rewardsHistory','rewardsPurchases','pausenConfig','spaetschicht','termineConfig','trainingMode','onlineUsers'];
+      'rewardsHistory','rewardsPurchases','pausenConfig','spaetschicht','termineConfig','trainingMode','onlineUsers','lotteryAnnounce'];
     keys.forEach(function(key){
       var range=rm[key];var cell=range?'A'+range.start:null;
       if(!cell||cell==='A1')return;
@@ -796,7 +799,7 @@ function saveData(data){
   var keys=['customTemplates','unoGames','pokerGames','results','coachingSessions',
     'assignments','agents','absences','projects','customKeywords','rewardsConfig',
     'rewardsPoints','rewardsHistory','rewardsPurchases','termine','termineConfig','news','monopolyGames',
-    'pausenConfig','pausenAwards','trainingMaterials','trainingMode','spaetschicht','wheelTournaments','onlineUsers','agentMessages','wvlLost'];
+    'pausenConfig','pausenAwards','trainingMaterials','trainingMode','spaetschicht','wheelTournaments','onlineUsers','agentMessages','wvlLost','lotteryAnnounce'];
   keys.forEach(function(key){
     var range=rm[key];var cell=range?'A'+range.start:null;
     if(!cell||cell==='A1')return;
@@ -2360,19 +2363,25 @@ function getOrCreateSheet(){
                 showNotification('☕ Kurzpause an alle '+agents.length+' Agenten vergeben!')};
             // Lottery
             const activePrizes=(config.lotteryPrizes||[]).filter(p=>p.enabled&&p.name);
-            const startLottery=()=>{if(agents.length<2){showNotification('Mindestens 2 Agenten nötig','error');return}if(activePrizes.length===0){showNotification('Keine Preise aktiviert','error');return}
-                const prize=lotteryPrize||activePrizes[Math.floor(Math.random()*activePrizes.length)].name;
+            const pendingAnnounce=appData.lotteryAnnounce&&appData.lotteryAnnounce.status==='pending'?appData.lotteryAnnounce:null;
+            const startLottery=()=>{if(pendingAnnounce){showNotification('⚠️ Erst den ausstehenden Gewinn freigeben oder verwerfen!','error');return}if(agents.length<2){showNotification('Mindestens 2 Agenten nötig','error');return}if(activePrizes.length===0){showNotification('Keine Preise aktiviert','error');return}
+                const prizeObj=lotteryPrize?activePrizes.find(p=>p.name===lotteryPrize):activePrizes[Math.floor(Math.random()*activePrizes.length)];
+                const prize=prizeObj?prizeObj.name:(lotteryPrize||'Zufallspreis');const icon=prizeObj?prizeObj.icon:'🎁';
                 setLotteryRunning(true);setLotteryWinner(null);
                 let tick=0;const maxTicks=20;
                 const interval=setInterval(()=>{tick++;setLotteryHighlight(Math.floor(Math.random()*agents.length));
                     if(tick>=maxTicks){clearInterval(interval);
                         const winner=agents[Math.floor(Math.random()*agents.length)];
                         setLotteryHighlight(agents.indexOf(winner));setLotteryWinner(winner);setLotteryRunning(false);
-                        const newAward={id:Date.now().toString(),agentId:winner.id,agentName:winner.name,type:'lottery',prize,date:new Date().toISOString(),seen:false};
-                        updateData({...appData,pausenAwards:[...awards,newAward]});
-                        showNotification('🎉 '+winner.name+' hat gewonnen: '+prize);
+                        updateData({...appData,lotteryAnnounce:{id:Date.now().toString(),agentId:winner.id,name:winner.name,prize,icon,status:'pending',createdAt:new Date().toISOString()}});
+                        showNotification('🎰 '+winner.name+' hat gewonnen: '+prize+' — Freigabe ausstehend!');
                     }
                 },500)};
+            const releaseLottery=()=>{const la=appData.lotteryAnnounce;if(!la||la.status!=='pending')return;
+                const newAward={id:la.id,agentId:la.agentId,agentName:la.name,type:'lottery',prize:la.prize,date:new Date().toISOString(),seen:false};
+                updateData({...appData,pausenAwards:[...awards,newAward],lotteryAnnounce:{...la,status:'active',activatedAt:new Date().toISOString()}});
+                showNotification('📢 Gewinn freigegeben für '+la.name+'!');};
+            const cancelLottery=()=>{updateData({...appData,lotteryAnnounce:null});showNotification('Lotterie-Gewinn verworfen')};
             const deleteAward=async(id)=>{await updateData({...appData,pausenAwards:awards.filter(a=>a.id!==id)});showNotification('Gelöscht')};
             const agentAwardCount=(id)=>awards.filter(a=>a.agentId===id).length;
             return(
@@ -2415,8 +2424,8 @@ function getOrCreateSheet(){
                             {/* Draw controls */}
                             <div className="flex items-center gap-2 mb-2">
                                 <select value={lotteryPrize} onChange={e=>setLotteryPrize(e.target.value)} className="px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 text-white text-xs"><option value="" style={{background:'#1e293b'}}>Zufällig</option>{activePrizes.map(p=><option key={p.id} value={p.name} style={{background:'#1e293b'}}>{p.icon} {p.name}</option>)}</select>
-                                <button onClick={startLottery} disabled={lotteryRunning} className="px-4 py-1.5 rounded-lg font-bold text-sm" style={{background:lotteryRunning?'#555':'linear-gradient(135deg,#d4af37,#b8860b)',color:lotteryRunning?'#888':'#000',cursor:lotteryRunning?'wait':'pointer'}}>
-                                    {lotteryRunning?'🎰 Läuft...':'🎰 Ziehen!'}
+                                <button onClick={startLottery} disabled={lotteryRunning||!!pendingAnnounce} className="px-4 py-1.5 rounded-lg font-bold text-sm" style={{background:lotteryRunning||pendingAnnounce?'#555':'linear-gradient(135deg,#d4af37,#b8860b)',color:lotteryRunning||pendingAnnounce?'#888':'#000',cursor:lotteryRunning||pendingAnnounce?'not-allowed':'pointer'}}>
+                                    {lotteryRunning?'🎰 Läuft...':pendingAnnounce?'⏳ Freigabe offen':'🎰 Ziehen!'}
                                 </button>
                                 {lotteryWinner&&<span className="text-xs text-emerald-400 font-bold">🎉 {lotteryWinner.name}: {lotteryPrize||'Zufallspreis'}</span>}
                             </div>
@@ -2430,6 +2439,16 @@ function getOrCreateSheet(){
                                 }}>
                                     <div className={"text-xs font-bold "+(isWinner?'text-black':'text-white')}>{isWinner?'🎉 ':''}{u.name.split(' ')[0]}</div>
                                 </div>)})}</div>
+                            {pendingAnnounce&&<div className="mt-3 p-3 rounded-xl" style={{background:'linear-gradient(135deg,rgba(212,175,55,0.12),rgba(184,134,11,0.08))',border:'1.5px solid rgba(212,175,55,0.3)'}}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2"><span className="text-lg">{pendingAnnounce.icon||'🎰'}</span><div><span className="text-white font-bold text-sm">{pendingAnnounce.name}</span><span className="text-slate-400 text-xs ml-2">{pendingAnnounce.prize}</span></div></div>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={cancelLottery} className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{background:'rgba(255,255,255,0.05)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.2)'}}>✕ Verwerfen</button>
+                                        <button onClick={releaseLottery} className="px-4 py-1.5 rounded-lg font-bold text-sm" style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff',boxShadow:'0 2px 10px rgba(16,185,129,0.3)'}}>📢 Freigeben</button>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1">⏳ Wartet auf Freigabe — Agenten und Dashboard sehen den Gewinn erst nach Klick auf „Freigeben"</p>
+                            </div>}
                         </div>
                     </div>
                     {/* Award history */}
@@ -14359,6 +14378,22 @@ Regeln:
             const fileRef=useRef(null);
             const vnrCacheRef=useRef({});
 
+            /* Lottery Announcement Overlay */
+            const[lotteryOverlayVisible,setLotteryOverlayVisible]=useState(false);
+            const lotteryOverlayRef=useRef(null);
+            useEffect(()=>{
+                const la=appData?.lotteryAnnounce;
+                if(la&&la.status==='active'&&la.activatedAt){
+                    const elapsed=Date.now()-new Date(la.activatedAt).getTime();
+                    if(elapsed<60000){setLotteryOverlayVisible(true);lotteryOverlayRef.current=la;
+                        const timer=setTimeout(()=>{setLotteryOverlayVisible(false);lotteryOverlayRef.current=null;
+                            updateData({...appData,lotteryAnnounce:{...la,status:'done'}});
+                        },60000-elapsed);
+                        return()=>clearTimeout(timer);
+                    }else if(la.status==='active'){updateData({...appData,lotteryAnnounce:{...la,status:'done'}});setLotteryOverlayVisible(false)}
+                }else{setLotteryOverlayVisible(false)}
+            },[appData?.lotteryAnnounce?.status,appData?.lotteryAnnounce?.activatedAt]);
+
             /* Feierabend-Zeitsteuerung */
             const[scheduleStart,setScheduleStart]=useState('08:00');
             const[scheduleEnd,setScheduleEnd]=useState('17:30');
@@ -15015,6 +15050,24 @@ Regeln:
 
             return(
             <div className="fixed inset-0 bg-black flex flex-col z-50" style={{background:'linear-gradient(135deg,#0a0a0a,#0f172a)'}}>
+                {/* Lottery Winner Overlay */}
+                {lotteryOverlayVisible&&lotteryOverlayRef.current&&(()=>{const la=lotteryOverlayRef.current;return(
+                <div className="fixed inset-0 flex items-center justify-center animate-fade-in" style={{zIndex:99999,background:'radial-gradient(ellipse at center,rgba(212,175,55,0.15),rgba(0,0,0,0.95))',backdropFilter:'blur(8px)'}}>
+                    <style>{'@keyframes lottery-confetti{0%{transform:translateY(-100vh) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}@keyframes lottery-glow{0%,100%{box-shadow:0 0 40px rgba(212,175,55,0.3),0 0 80px rgba(212,175,55,0.1)}50%{box-shadow:0 0 60px rgba(212,175,55,0.5),0 0 120px rgba(212,175,55,0.2)}}@keyframes lottery-scale{0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1}}'}</style>
+                    {[...Array(30)].map((_,i)=><div key={i} style={{position:'fixed',left:Math.random()*100+'%',top:'-5%',width:8+Math.random()*8,height:8+Math.random()*8,borderRadius:Math.random()>0.5?'50%':'2px',background:['#d4af37','#fbbf24','#f59e0b','#10b981','#3b82f6','#ef4444','#a855f7'][i%7],animation:'lottery-confetti '+(2+Math.random()*3)+'s linear '+(Math.random()*2)+'s infinite',opacity:0.8}}/>)}
+                    <div className="text-center" style={{animation:'lottery-scale 0.6s ease-out'}}>
+                        <div style={{fontSize:120,marginBottom:24,filter:'drop-shadow(0 0 30px rgba(212,175,55,0.5))'}}>{la.icon||'🎰'}</div>
+                        <h1 className="font-black text-white mb-4" style={{fontSize:48,textShadow:'0 0 30px rgba(212,175,55,0.5)'}}>Lotterie-Gewinn!</h1>
+                        <div className="mx-auto mb-6 px-12 py-5 rounded-2xl" style={{background:'linear-gradient(135deg,#d4af37,#b8860b)',animation:'lottery-glow 2s ease-in-out infinite',maxWidth:500}}>
+                            <div className="text-black font-black" style={{fontSize:40}}>{la.icon||'🎰'} {la.prize}</div>
+                        </div>
+                        <div className="mb-4 px-8 py-4 rounded-2xl mx-auto" style={{background:'rgba(255,255,255,0.08)',maxWidth:400}}>
+                            <p className="text-slate-400 text-lg mb-1">Gewinner</p>
+                            <p className="text-white font-black" style={{fontSize:36}}>{la.name}</p>
+                        </div>
+                        <p className="text-slate-500 text-sm mt-6">🎉 Herzlichen Glückwunsch!</p>
+                    </div>
+                </div>);})()}
                 <div className="px-5 py-3 flex items-center justify-between flex-shrink-0" style={{borderBottom:'1px solid rgba(255,255,255,0.08)',background:'rgba(0,0,0,0.5)'}}>
                     <div className="flex items-center gap-4">
                         <button onClick={onBack} className="px-4 py-2 rounded-lg text-base font-bold text-slate-400 hover:text-white hover:bg-white/5">← Zurück</button>
@@ -17594,12 +17647,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -17702,6 +17757,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
