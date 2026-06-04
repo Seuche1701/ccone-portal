@@ -37,6 +37,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -261,6 +262,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -289,13 +291,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.5.4';
+        const APP_VERSION = '6.5.5';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -10338,6 +10341,30 @@ Regeln:
                 try{await api.saveUnoGames(newGames)}catch(e){console.warn('UNO save error:',e)}
             };
             
+            // Atomic single-game update: re-reads fresh server state right before saving,
+            // applies updater only to THIS game, then persists. Prevents concurrent saves
+            // (multiple players acting at once) from clobbering each other. updater receives
+            // the freshest version of the current game and must return the new game object
+            // (or null to delete the game). Returns the resulting game (or null).
+            const saveGameUpdate=async(updater)=>{
+                const gid=gameDataRef.current?.id;
+                if(!gid)return null;
+                let serverGames=[];
+                try{serverGames=await api.getUnoGames();if(!Array.isArray(serverGames))serverGames=[]}catch(e){serverGames=appData.unoGames||[]}
+                const freshGame=serverGames.find(g=>g.id===gid)||gameDataRef.current;
+                const result=updater(freshGame);
+                let newGames;
+                if(result===null){
+                    newGames=serverGames.filter(g=>g.id!==gid);
+                }else if(serverGames.some(g=>g.id===gid)){
+                    newGames=serverGames.map(g=>g.id===gid?result:g);
+                }else{
+                    newGames=[...serverGames,result];
+                }
+                await saveUnoOnly(newGames);
+                return result;
+            };
+            
             // Ref that always holds the latest sync function (avoids stale closures in setInterval)
             const syncRef=useRef(null);
             
@@ -10378,6 +10405,7 @@ Regeln:
             const[choosingColor,setChoosingColor]=useState(false);
             const[pendingCard,setPendingCard]=useState(null);
             const[pendingCardIndex,setPendingCardIndex]=useState(null);
+            const[confirmDeleteId,setConfirmDeleteId]=useState(null);
             const pollRef=useRef(null);
             const lastLocalUpdate=useRef(0);
             const gameDataRef=useRef(null);
@@ -10390,7 +10418,7 @@ Regeln:
             // Assign sync function every render
             syncRef.current=async()=>{
                 try{
-                    if(Date.now()-lastLocalUpdate.current<2000)return;
+                    if(Date.now()-lastLocalUpdate.current<800)return;
                     const games=await api.getUnoGames();
                     if(!Array.isArray(games))return;
                     // Direct gameData update for lobby/playing (most important!)
@@ -10458,6 +10486,20 @@ Regeln:
                 showNotification('Lobby erstellt! Warte auf Spieler...');
             };
             
+            // Atomic update of an arbitrary game by id (used before gameDataRef is set,
+            // e.g. from the lobby browser). Re-reads server state right before saving so
+            // concurrent joins don't clobber each other.
+            const updateGameById=async(gameId,updater)=>{
+                let serverGames=[];
+                try{serverGames=await api.getUnoGames();if(!Array.isArray(serverGames))serverGames=[]}catch(e){serverGames=appData.unoGames||[]}
+                const game=serverGames.find(g=>g.id===gameId);
+                if(!game)return{games:serverGames,game:null};
+                const result=updater(game);
+                const newGames=result===null?serverGames.filter(g=>g.id!==gameId):serverGames.map(g=>g.id===gameId?result:g);
+                await saveUnoOnly(newGames);
+                return{games:newGames,game:result};
+            };
+            
             const browseJoinGame=async(gameId)=>{
                 let freshGames=[];
                 try{freshGames=await api.getUnoGames();if(!Array.isArray(freshGames))freshGames=[]}catch(e){freshGames=appData.unoGames||[]}
@@ -10472,21 +10514,31 @@ Regeln:
                     return;
                 }
                 if(game.players.length>=16){showNotification('Spiel ist voll!','error');return}
-                const newPlayer={userId:currentUser.id,name:currentUser.name,hand:[],joined:Date.now()};
-                const updatedGame={...game,players:[...game.players,newPlayer]};
-                const updatedGames=freshGames.map(g=>g.id===gameId?updatedGame:g);
-                await saveUnoOnly(updatedGames);
-                setGameData(updatedGame);
-                if(game.status==='playing'){
-                    // Join mid-game: deal cards
-                    const deck=[...updatedGame.deck];
-                    const hand=deck.splice(0,Math.min(7,deck.length));
-                    const playerWithHand={...newPlayer,hand};
-                    const gameWithHand={...updatedGame,players:updatedGame.players.map(p=>p.userId===currentUser.id?playerWithHand:p),deck};
-                    const gamesWithHand=freshGames.map(g=>g.id===gameId?gameWithHand:g);
-                    await saveUnoOnly(gamesWithHand);
-                    setGameData(gameWithHand);
-                    setMyHand(hand);
+                // Atomic join: insert into the FRESH player list right before saving so two
+                // players joining at once don't overwrite each other. Cards (if mid-game)
+                // are dealt from the fresh deck in the same atomic step.
+                const {game:joined}=await updateGameById(gameId,fresh=>{
+                    // Re-check against freshest state
+                    if(fresh.players.some(p=>p.userId===currentUser.id))return fresh;
+                    if(fresh.players.length>=16)return fresh;
+                    let hand=[];
+                    let deck=fresh.deck||[];
+                    if(fresh.status==='playing'){
+                        deck=[...deck];
+                        hand=deck.splice(0,Math.min(7,deck.length));
+                    }
+                    const newPlayer={userId:currentUser.id,name:currentUser.name,hand,joined:Date.now()};
+                    return{...fresh,players:[...fresh.players,newPlayer],deck};
+                });
+                if(!joined){showNotification('Spiel nicht mehr verfügbar','error');return}
+                if(!joined.players.some(p=>p.userId===currentUser.id)){
+                    showNotification(joined.players.length>=16?'Spiel ist voll!':'Beitritt fehlgeschlagen','error');
+                    return;
+                }
+                setGameData(joined);
+                const me=joined.players.find(p=>p.userId===currentUser.id);
+                setMyHand(me?.hand||[]);
+                if(joined.status==='playing'){
                     setGameState('playing');
                     showNotification('Laufendem Spiel beigetreten!');
                 }else{
@@ -10497,32 +10549,29 @@ Regeln:
             
             const browseTakeOver=async(gameId)=>{
                 if(!isUnoHost){showNotification('Keine Berechtigung','error');return}
-                let freshGames=[];
-                try{freshGames=await api.getUnoGames();if(!Array.isArray(freshGames))freshGames=[]}catch(e){freshGames=appData.unoGames||[]}
-                const game=freshGames.find(g=>g.id===gameId);
-                if(!game){showNotification('Spiel nicht gefunden','error');return}
-                // Add self if not already in, set as host (player[0])
-                let players=[...game.players];
-                const alreadyIn=players.find(p=>p.userId===currentUser.id);
-                if(!alreadyIn){
-                    players.push({userId:currentUser.id,name:currentUser.name,hand:[],joined:Date.now()});
-                }
-                // Move self to position 0 (host position)
-                const me=players.find(p=>p.userId===currentUser.id);
-                players=players.filter(p=>p.userId!==currentUser.id);
-                players.unshift(me);
-                const updatedGame={...game,players,hostId:currentUser.id};
-                const updatedGames=freshGames.map(g=>g.id===gameId?updatedGame:g);
-                await saveUnoOnly(updatedGames);
-                setGameData(updatedGame);
-                setMyHand(me.hand||[]);
-                if(game.status==='playing'){setGameState('playing')}else{setGameState('lobby')}
+                const {game:taken}=await updateGameById(gameId,fresh=>{
+                    let players=[...fresh.players];
+                    if(!players.find(p=>p.userId===currentUser.id)){
+                        players.push({userId:currentUser.id,name:currentUser.name,hand:[],joined:Date.now()});
+                    }
+                    const me=players.find(p=>p.userId===currentUser.id);
+                    players=players.filter(p=>p.userId!==currentUser.id);
+                    players.unshift(me);
+                    return{...fresh,players,hostId:currentUser.id};
+                });
+                if(!taken){showNotification('Spiel nicht gefunden','error');return}
+                setGameData(taken);
+                const me=taken.players.find(p=>p.userId===currentUser.id);
+                setMyHand(me?.hand||[]);
+                if(taken.status==='playing'){setGameState('playing')}else{setGameState('lobby')}
                 showNotification('🎮 Lobby übernommen!');
             };
             
             const browseDeleteGame=async(gameId)=>{
                 if(!isUnoHost){showNotification('Keine Berechtigung','error');return}
-                if(!confirm('Dieses Spiel wirklich löschen?'))return;
+                // No native confirm() in Electron – use inline confirm UI instead.
+                if(confirmDeleteId!==gameId){setConfirmDeleteId(gameId);return}
+                setConfirmDeleteId(null);
                 let freshGames=[];
                 try{freshGames=await api.getUnoGames();if(!Array.isArray(freshGames))freshGames=[]}catch(e){freshGames=appData.unoGames||[]}
                 await saveUnoOnly(freshGames.filter(g=>g.id!==gameId));
@@ -10588,46 +10637,30 @@ Regeln:
                 showNotification('Einzelspieler gestartet! Du gegen den Computer!');
             };
             
-            const startGame=()=>{
+            const startGame=async()=>{
                 if(!gameData||gameData.players.length<2){
                     showNotification('Mindestens 2 Spieler benötigt!','error');
                     return;
                 }
                 
-                // Initialisiere Spiel
-                const newDeck=createDeck();
-                const players=gameData.players.map(p=>({
-                    ...p,
-                    hand:newDeck.splice(0,7)
-                }));
+                const result=await saveGameUpdate(fresh=>{
+                    if(!fresh||fresh.players.length<2)return fresh;
+                    if(fresh.status==='playing')return fresh; // already started by someone else
+                    // Deal against the FRESH player list (someone may have joined just now)
+                    const newDeck=createDeck();
+                    const players=fresh.players.map(p=>({...p,hand:newDeck.splice(0,7)}));
+                    let firstCard=newDeck.pop();
+                    while(firstCard.type!=='number'){
+                        newDeck.unshift(firstCard);
+                        firstCard=newDeck.pop();
+                    }
+                    return{...fresh,status:'playing',players,deck:newDeck,discardPile:[firstCard],currentPlayer:0,direction:1};
+                });
                 
-                // Erste Karte aufdecken (keine Aktionskarte)
-                let firstCard=newDeck.pop();
-                while(firstCard.type!=='number'){
-                    newDeck.unshift(firstCard);
-                    firstCard=newDeck.pop();
-                }
-                
-                const updatedGame={
-                    ...gameData,
-                    status:'playing',
-                    players,
-                    deck:newDeck,
-                    discardPile:[firstCard],
-                    currentPlayer:0,
-                    direction:1
-                };
-                
-                saveUnoOnly((appData.unoGames||[]).map(g=>g.id===gameData.id?updatedGame:g));
-                
-                setGameData(updatedGame);
-                
-                // WICHTIG: Setze meine Hand!
-                const myPlayer=updatedGame.players.find(p=>p.userId===currentUser.id);
-                if(myPlayer){
-                    setMyHand(myPlayer.hand||[]);
-                }
-                
+                if(!result||result.players.length<2){showNotification('Mindestens 2 Spieler benötigt!','error');return;}
+                setGameData(result);
+                const myPlayer=result.players.find(p=>p.userId===currentUser.id);
+                if(myPlayer)setMyHand(myPlayer.hand||[]);
                 setGameState('playing');
                 showNotification('Spiel gestartet!');
             };
@@ -10759,6 +10792,10 @@ Regeln:
                 }
             },[gameData?.currentPlayer]);
             
+            // Match a card by identity (not array index) so a mid-click re-render/poll
+            // that reorders the hand cannot make the click target the wrong card.
+            const sameCard=(a,b)=>a&&b&&a.type===b.type&&a.value===b.value&&((a.type==='wild')||a.color===b.color);
+            
             const playCard=(index)=>{
                 if(!isMyTurn()){
                     showNotification('Du bist nicht am Zug!','error');
@@ -10783,119 +10820,90 @@ Regeln:
                 executePlayCard(card,index);
             };
             
-            const executePlayCard=(card,index,chosenColor=null)=>{
+            // Pure move calculation on a given game state. Removes the played card from
+            // the acting player's hand BY IDENTITY (robust against reordering), applies
+            // action-card effects and computes the next player. Returns the new game object.
+            // Returns null if the move is no longer valid against this (fresh) state.
+            const computeMove=(game,card,chosenColor,userId)=>{
+                if(!game||game.status!=='playing')return null;
+                const me=game.players.find(p=>p.userId===userId);
+                if(!me)return null;
+                // Must still be this player's turn on the fresh state
+                if(game.players[game.currentPlayer]?.userId!==userId)return null;
+                // Card must still be in hand (identity match) and playable against fresh top
+                const top=game.discardPile[game.discardPile.length-1];
+                const cardIdx=(me.hand||[]).findIndex(c=>sameCard(c,card));
+                if(cardIdx===-1)return null;
+                const stillPlayable=card.type==='wild'||(top&&top.type==='wild'&&top.color==='wild')||(top&&(card.color===top.color||card.value===top.value));
+                if(!stillPlayable)return null;
+                
                 const finalCard=chosenColor?{...card,color:chosenColor}:card;
+                const newHand=(me.hand||[]).filter((c,i)=>i!==cardIdx);
+                let players=game.players.map(p=>p.userId===userId?{...p,hand:newHand}:p);
                 
-                // Update hand - für Singleplayer direkt aus gameData (async-safe)
-                const currentHand=gameMode==='single'?(gameData.players.find(p=>p.userId===currentUser.id)?.hand||myHand):myHand;
-                const newHand=[...currentHand];
-                newHand.splice(index,1);
-                
-                // Update game state
-                const updatedPlayers=gameData.players.map(p=>{
-                    if(p.userId===currentUser.id){
-                        return{...p,hand:newHand};
-                    }
-                    return p;
-                });
-                
-                // Check winner
+                // Winner
                 if(newHand.length===0){
-                    const finishedGame={
-                        ...gameData,
-                        status:'finished',
-                        winner:{userId:currentUser.id,name:currentUser.name},
-                        players:updatedPlayers,
-                        discardPile:[...gameData.discardPile,finalCard]
-                    };
-                    if(gameMode==='multi'){
-                        saveUnoOnly((appData.unoGames||[]).map(g=>g.id===gameData.id?finishedGame:g));
-                    }
-                    setGameData(finishedGame);
-                    setGameState('finished');
-                    showNotification('🏆 Du hast gewonnen!');
-                    return;
+                    return{...game,status:'finished',winner:{userId,name:me.name},players,discardPile:[...game.discardPile,finalCard]};
                 }
                 
-                // Calculate next player
-                let nextPlayer=gameData.currentPlayer;
-                let newDirection=gameData.direction||1;
-                const numPlayers=gameData.players.length;
+                let newDirection=game.direction||1;
+                const numPlayers=game.players.length;
+                let nextPlayer;
+                let newDeck=game.deck;
                 
                 if(card.value==='reverse'){
                     newDirection=newDirection*-1;
                     if(numPlayers===2){
-                        // In 2-player UNO, reverse acts like skip (same player goes again)
-                        nextPlayer=gameData.currentPlayer;
+                        nextPlayer=game.currentPlayer;
                     }else{
-                        nextPlayer=((gameData.currentPlayer+newDirection)%numPlayers+numPlayers)%numPlayers;
+                        nextPlayer=((game.currentPlayer+newDirection)%numPlayers+numPlayers)%numPlayers;
                     }
                 }else if(card.value==='skip'){
-                    const skipped=((gameData.currentPlayer+newDirection)%numPlayers+numPlayers)%numPlayers;
+                    const skipped=((game.currentPlayer+newDirection)%numPlayers+numPlayers)%numPlayers;
                     nextPlayer=((skipped+newDirection)%numPlayers+numPlayers)%numPlayers;
-                }else if(card.value==='+2'){
-                    // Next player draws 2 and is skipped
-                    const nextIdx=((gameData.currentPlayer+newDirection)%numPlayers+numPlayers)%numPlayers;
-                    const drawn=gameData.deck.slice(0,2);
-                    const newDeck=gameData.deck.slice(2);
-                    // Immutable update - spread the player object
-                    updatedPlayers[nextIdx]={...updatedPlayers[nextIdx],hand:[...updatedPlayers[nextIdx].hand,...drawn]};
+                }else if(card.value==='+2'||card.value==='+4'){
+                    const drawCount=card.value==='+2'?2:4;
+                    const nextIdx=((game.currentPlayer+newDirection)%numPlayers+numPlayers)%numPlayers;
+                    const drawn=game.deck.slice(0,drawCount);
+                    newDeck=game.deck.slice(drawCount);
+                    players[nextIdx]={...players[nextIdx],hand:[...players[nextIdx].hand,...drawn]};
                     nextPlayer=((nextIdx+newDirection)%numPlayers+numPlayers)%numPlayers;
-                    
-                    const updatedGame={
-                        ...gameData,
-                        players:updatedPlayers,
-                        deck:newDeck,
-                        discardPile:[...gameData.discardPile,finalCard],
-                        currentPlayer:nextPlayer,
-                        direction:newDirection
-                    };
-                    if(gameMode==='multi'){
-                        saveUnoOnly((appData.unoGames||[]).map(g=>g.id===gameData.id?updatedGame:g));
-                    }
-                    setGameData(updatedGame);
-                    setMyHand(newHand);
-                    return;
-                }else if(card.value==='+4'){
-                    // Next player draws 4 and is skipped
-                    const nextIdx=((gameData.currentPlayer+newDirection)%numPlayers+numPlayers)%numPlayers;
-                    const drawn=gameData.deck.slice(0,4);
-                    const newDeck=gameData.deck.slice(4);
-                    // Immutable update - spread the player object
-                    updatedPlayers[nextIdx]={...updatedPlayers[nextIdx],hand:[...updatedPlayers[nextIdx].hand,...drawn]};
-                    nextPlayer=((nextIdx+newDirection)%numPlayers+numPlayers)%numPlayers;
-                    
-                    const updatedGame={
-                        ...gameData,
-                        players:updatedPlayers,
-                        deck:newDeck,
-                        discardPile:[...gameData.discardPile,finalCard],
-                        currentPlayer:nextPlayer,
-                        direction:newDirection
-                    };
-                    if(gameMode==='multi'){
-                        saveUnoOnly((appData.unoGames||[]).map(g=>g.id===gameData.id?updatedGame:g));
-                    }
-                    setGameData(updatedGame);
-                    setMyHand(newHand);
-                    return;
                 }else{
-                    nextPlayer=((gameData.currentPlayer+newDirection)%numPlayers+numPlayers)%numPlayers;
+                    nextPlayer=((game.currentPlayer+newDirection)%numPlayers+numPlayers)%numPlayers;
                 }
                 
-                const updatedGame={
-                    ...gameData,
-                    players:updatedPlayers,
-                    discardPile:[...gameData.discardPile,finalCard],
-                    currentPlayer:nextPlayer,
-                    direction:newDirection
-                };
-                
+                return{...game,players,deck:newDeck,discardPile:[...game.discardPile,finalCard],currentPlayer:nextPlayer,direction:newDirection};
+            };
+            
+            const executePlayCard=async(card,index,chosenColor=null)=>{
                 if(gameMode==='multi'){
-                    saveUnoOnly((appData.unoGames||[]).map(g=>g.id===gameData.id?updatedGame:g));
+                    // Atomic: recompute against freshest server state right before saving.
+                    const result=await saveGameUpdate(fresh=>computeMove(fresh,card,chosenColor,currentUser.id));
+                    if(!result){
+                        // Move became invalid (turn passed / card already gone). Resync silently.
+                        showNotification('Zug nicht mehr gültig – aktualisiere...','error');
+                        try{await syncRef.current?.()}catch(e){}
+                        return;
+                    }
+                    setGameData(result);
+                    const me=result.players.find(p=>p.userId===currentUser.id);
+                    setMyHand(me?.hand||[]);
+                    if(result.status==='finished'){
+                        setGameState('finished');
+                        showNotification('🏆 Du hast gewonnen!');
+                    }
+                    return;
                 }
-                setGameData(updatedGame);
-                setMyHand(newHand);
+                // Singleplayer: operate locally on current gameData
+                const result=computeMove(gameData,card,chosenColor,currentUser.id);
+                if(!result){showNotification('Diese Karte kannst du nicht spielen!','error');return;}
+                setGameData(result);
+                const me=result.players.find(p=>p.userId===currentUser.id);
+                setMyHand(me?.hand||[]);
+                if(result.status==='finished'){
+                    setGameState('finished');
+                    showNotification('🏆 Du hast gewonnen!');
+                }
             };
             
             const chooseColor=(color)=>{
@@ -10905,7 +10913,7 @@ Regeln:
                 setPendingCardIndex(null);
             };
             
-            const drawCard=()=>{
+            const drawCard=async()=>{
                 if(!isMyTurn()){
                     showNotification('Du bist nicht am Zug!','error');
                     return;
@@ -10916,50 +10924,60 @@ Regeln:
                     return;
                 }
                 
+                if(gameMode==='multi'){
+                    const result=await saveGameUpdate(fresh=>{
+                        if(!fresh||fresh.status!=='playing')return fresh;
+                        // Still my turn on fresh state?
+                        if(fresh.players[fresh.currentPlayer]?.userId!==currentUser.id)return fresh;
+                        if(!fresh.deck||fresh.deck.length===0)return fresh;
+                        const drawn=fresh.deck[0];
+                        const newDeck=fresh.deck.slice(1);
+                        const players=fresh.players.map(p=>p.userId===currentUser.id?{...p,hand:[...(p.hand||[]),drawn]}:p);
+                        const dir=fresh.direction||1;
+                        const np=fresh.players.length;
+                        const nextPlayer=((fresh.currentPlayer+dir)%np+np)%np;
+                        return{...fresh,players,deck:newDeck,currentPlayer:nextPlayer};
+                    });
+                    if(result){
+                        setGameData(result);
+                        const me=result.players.find(p=>p.userId===currentUser.id);
+                        setMyHand(me?.hand||[]);
+                    }
+                    return;
+                }
+                
+                // Singleplayer
                 const drawn=gameData.deck[0];
                 const newDeck=gameData.deck.slice(1);
-                const currentHand=gameMode==='single'?(gameData.players.find(p=>p.userId===currentUser.id)?.hand||myHand):myHand;
+                const currentHand=gameData.players.find(p=>p.userId===currentUser.id)?.hand||myHand;
                 const newHand=[...currentHand,drawn];
-                
-                const updatedPlayers=gameData.players.map(p=>{
-                    if(p.userId===currentUser.id){
-                        return{...p,hand:newHand};
-                    }
-                    return p;
-                });
-                
-                const dir=gameData.direction||1;
-                const np=gameData.players.length;
-                const nextPlayer=gameMode==='single'?1:((gameData.currentPlayer+dir)%np+np)%np;
-                
-                const updatedGame={
-                    ...gameData,
-                    players:updatedPlayers,
-                    deck:newDeck,
-                    currentPlayer:nextPlayer
-                };
-                
-                if(gameMode==='multi'){
-                    saveUnoOnly((appData.unoGames||[]).map(g=>g.id===gameData.id?updatedGame:g));
-                }
+                const updatedPlayers=gameData.players.map(p=>p.userId===currentUser.id?{...p,hand:newHand}:p);
+                const updatedGame={...gameData,players:updatedPlayers,deck:newDeck,currentPlayer:1};
                 setGameData(updatedGame);
                 setMyHand(newHand);
             };
             
-            const leaveGame=()=>{
+            const leaveGame=async()=>{
                 if(gameMode==='single'){
                     resetGame();
                     return;
                 }
                 
                 if(!gameData){onClose();return;}
-                const updatedPlayers=gameData.players.filter(p=>p.userId!==currentUser.id);
-                if(updatedPlayers.length===0){
-                    saveUnoOnly((appData.unoGames||[]).filter(g=>g.id!==gameData.id));
-                }else{
-                    const updatedGame={...gameData,players:updatedPlayers};
-                    saveUnoOnly((appData.unoGames||[]).map(g=>g.id===gameData.id?updatedGame:g));
-                }
+                // Atomic: remove self from the FRESH player list so leaving doesn't roll back
+                // a move another player just made. Adjust currentPlayer if needed.
+                await saveGameUpdate(fresh=>{
+                    if(!fresh)return null;
+                    const idx=fresh.players.findIndex(p=>p.userId===currentUser.id);
+                    if(idx===-1)return fresh; // already gone
+                    const players=fresh.players.filter(p=>p.userId!==currentUser.id);
+                    if(players.length===0)return null; // delete empty game
+                    // Keep currentPlayer pointing at a valid player
+                    let cp=fresh.currentPlayer;
+                    if(idx<cp)cp=cp-1;
+                    if(cp>=players.length)cp=0;
+                    return{...fresh,players,currentPlayer:cp};
+                });
                 setGameData(null);
                 setMyHand([]);
                 // Don't stop polling - go back to lobby browser
@@ -11136,9 +11154,20 @@ Regeln:
                                                                 </button>
                                                             )}
                                                             {canDelete&&(
-                                                                <button onClick={()=>browseDeleteGame(game.id)} className="px-3 py-2.5 rounded-xl font-bold text-sm bg-red-600/40 text-red-300 hover:bg-red-500/60 transition-all border border-red-500/30" title="Spiel löschen">
-                                                                    🗑️
-                                                                </button>
+                                                                confirmDeleteId===game.id?(
+                                                                    <div className="flex gap-1">
+                                                                        <button onClick={()=>browseDeleteGame(game.id)} className="px-3 py-2.5 rounded-xl font-bold text-sm bg-red-600/80 text-white hover:bg-red-500 transition-all border border-red-400/50" title="Löschen bestätigen">
+                                                                            ✓
+                                                                        </button>
+                                                                        <button onClick={()=>setConfirmDeleteId(null)} className="px-3 py-2.5 rounded-xl font-bold text-sm bg-white/5 text-slate-300 hover:bg-white/10 transition-all border border-white/10" title="Abbrechen">
+                                                                            ✕
+                                                                        </button>
+                                                                    </div>
+                                                                ):(
+                                                                    <button onClick={()=>browseDeleteGame(game.id)} className="px-3 py-2.5 rounded-xl font-bold text-sm bg-red-600/40 text-red-300 hover:bg-red-500/60 transition-all border border-red-500/30" title="Spiel löschen">
+                                                                        🗑️
+                                                                    </button>
+                                                                )
                                                             )}
                                                         </div>
                                                     </div>
@@ -17775,12 +17804,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -17884,6 +17915,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
