@@ -301,7 +301,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.5.8';
+        const APP_VERSION = '6.5.9';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -1520,7 +1520,7 @@ function getOrCreateSheet(){
                             <div className="text-center mb-8">
                                 <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white mb-4 shadow-lg"><CConeLogo size={50}/></div>
                                 <h1 className="text-3xl font-bold text-white">CCONE PORTAL</h1>
-                                <p className="text-slate-300 mt-2">für EKD & VNR</p>
+                                <p className="text-slate-300 mt-2">für EKD</p>
                             </div>
                             <form onSubmit={(e)=>{e.preventDefault();onLogin(username,password)}} className="space-y-5">
                                 <div><label className="block text-sm font-medium text-slate-200 mb-2">Benutzername</label><input type="text" value={username} onChange={(e)=>setUsername(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 focus:border-emerald-400 focus:bg-white/20 outline-none backdrop-blur-sm" placeholder="Benutzername"/></div>
@@ -1916,7 +1916,6 @@ function getOrCreateSheet(){
                     </div>
                     <div className="flex gap-2 mb-6">
                         <button onClick={()=>{setActiveSection('ekd');setParsed(null);setPasteData('')}} className="px-5 py-2.5 rounded-xl font-bold" style={{background:activeSection==='ekd'?'linear-gradient(135deg,#10b981,#059669)':'rgba(255,255,255,0.04)',color:activeSection==='ekd'?'#fff':'#888',border:'1.5px solid '+(activeSection==='ekd'?'#10b981':'rgba(255,255,255,0.08)')}}>🟢 EKD Termine</button>
-                        <button onClick={()=>{setActiveSection('vnr');setParsed(null);setPasteData('')}} className="px-5 py-2.5 rounded-xl font-bold" style={{background:activeSection==='vnr'?'linear-gradient(135deg,#3b82f6,#2563eb)':'rgba(255,255,255,0.04)',color:activeSection==='vnr'?'#fff':'#888',border:'1.5px solid '+(activeSection==='vnr'?'#3b82f6':'rgba(255,255,255,0.08)')}}>🔵 VNR Termine</button>
                     </div>
                     {/* ===== EKD ===== */}
                     {activeSection==='ekd'&&(<>
@@ -7134,71 +7133,7 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                             </div>
                         )}
                         
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {/* VNR DAM */}
-                            <div className="border-2 border-slate-200 rounded-xl p-4">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div>
-                                        <p className="font-semibold text-slate-800">VNR DAM</p>
-                                        <p className="text-xs text-slate-500">
-                                            {customTemplates.DAM?'☁️ Eigener Leitfaden':'Standard-Leitfaden'}
-                                        </p>
-                                    </div>
-                                    {customTemplates.DAM&&(
-                                        <span className="text-xs px-2 py-1 rounded-full bg-emerald-900/30 text-emerald-300">☁️ Sync</span>
-                                    )}
-                                </div>
-                                <div className="flex gap-2 mt-3">
-                                    <button
-                                        onClick={()=>startEditTemplate('DAM')}
-                                        className="flex-1 text-xs py-2 rounded-lg bg-blue-900/30 text-blue-300 hover:bg-blue-100"
-                                    >
-                                        ✏️ {customTemplates.DAM?'Bearbeiten':'Hochladen'}
-                                    </button>
-                                    {customTemplates.DAM&&(
-                                        <button
-                                            onClick={()=>deleteCustomTemplate('DAM')}
-                                            className="text-xs px-3 py-2 rounded-lg bg-red-900/30 text-red-700 hover:bg-red-100"
-                                        >
-                                            🗑️
-                                        </button>
-                                    )}
-                                </div>
-                                <button onClick={()=>{loadTemplate('DAM');setShowChecklistPage(true);}} className="w-full mt-2 text-sm py-2 rounded-lg bg-emerald-900/30 text-emerald-300 border border-emerald-500/30 font-medium">📋 Checkliste öffnen</button>
-                            </div>
-                            
-                            {/* VNR SAP */}
-                            <div className="border-2 border-slate-200 rounded-xl p-4">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div>
-                                        <p className="font-semibold text-slate-800">VNR SAP</p>
-                                        <p className="text-xs text-slate-500">
-                                            {customTemplates.SAP?'☁️ Eigener Leitfaden':'Standard-Leitfaden'}
-                                        </p>
-                                    </div>
-                                    {customTemplates.SAP&&(
-                                        <span className="text-xs px-2 py-1 rounded-full bg-emerald-900/30 text-emerald-300">☁️ Sync</span>
-                                    )}
-                                </div>
-                                <div className="flex gap-2 mt-3">
-                                    <button
-                                        onClick={()=>startEditTemplate('SAP')}
-                                        className="flex-1 text-xs py-2 rounded-lg bg-blue-900/30 text-blue-300 hover:bg-blue-100"
-                                    >
-                                        ✏️ {customTemplates.SAP?'Bearbeiten':'Hochladen'}
-                                    </button>
-                                    {customTemplates.SAP&&(
-                                        <button
-                                            onClick={()=>deleteCustomTemplate('SAP')}
-                                            className="text-xs px-3 py-2 rounded-lg bg-red-900/30 text-red-700 hover:bg-red-100"
-                                        >
-                                            🗑️
-                                        </button>
-                                    )}
-                                </div>
-                                <button onClick={()=>{loadTemplate('SAP');setShowChecklistPage(true);}} className="w-full mt-2 text-sm py-2 rounded-lg bg-emerald-900/30 text-emerald-300 border border-emerald-500/30 font-medium">📋 Checkliste öffnen</button>
-                            </div>
-                            
+                        <div className="grid grid-cols-1 gap-4">
                             {/* EKD */}
                             <div className="border-2 border-slate-200 rounded-xl p-4">
                                 <div className="flex items-center justify-between mb-2">
@@ -14567,7 +14502,7 @@ Regeln:
                         return(<div className="glass-card rounded-2xl p-4" style={{border:'1px solid rgba(212,175,55,0.2)'}}>
                         <div className="flex items-center justify-between mb-3"><h3 className="font-bold text-white flex items-center gap-2">🏆 Termin-Ranking</h3><span className="text-xs text-slate-500">Monat</span></div>
                         {/* Filter buttons */}
-                        <div className="flex gap-1 mb-3">{[{k:'all',l:'Alle',c:'#888'},{k:'ekd',l:'EKD',c:'#10b981'},{k:'vnr',l:'VNR',c:'#3b82f6'}].map(f=>(
+                        <div className="flex gap-1 mb-3">{[{k:'all',l:'Alle',c:'#888'},{k:'ekd',l:'EKD',c:'#10b981'}].map(f=>(
                             <button key={f.k} onClick={()=>setRankingFilter(f.k)} className="flex-1 py-1.5 rounded-lg text-xs font-bold text-center" style={{background:rankingFilter===f.k?f.c+'22':'rgba(255,255,255,0.03)',border:'1.5px solid '+(rankingFilter===f.k?f.c:'transparent'),color:rankingFilter===f.k?f.c:'#666'}}>{f.l}</button>
                         ))}</div>
                         {ranking.length===0&&<p className="text-center text-slate-500 text-sm py-4">Keine Termine für {filterLabel}</p>}
@@ -14594,7 +14529,7 @@ Regeln:
 </main></div></div>)}
 
         function LiveDashboard({onBack,showNotification,appData,refreshData,updateData}){
-            const[mode,setMode]=useState(null);
+            const[mode,setMode]=useState('ekd');/* VNR-Projekt entfernt: direkt EKD, kein VNR-Fetch/Panel mehr */
             const[zoom,setZoom]=useState(parseFloat(sessionStorage.getItem('dashboard_zoom')||'1'));
             const adjustZoom=(delta)=>{var nz=Math.round((zoom+delta)*100)/100;nz=Math.max(0.5,Math.min(2,nz));setZoom(nz);sessionStorage.setItem('dashboard_zoom',String(nz))};
             const[vnrData,setVnrData]=useState(null);
@@ -14842,7 +14777,7 @@ Regeln:
             useEffect(()=>{
                 if(!mode||feierabend)return;
                 const polls=[];
-                if(mode==='vnr'||mode==='both'){
+                if(false&&(mode==='vnr'||mode==='both')){/* VNR-Projekt entfernt - Fetch dauerhaft deaktiviert */
                     const fetchVnr=async()=>{if(feierabendRef.current)return;try{
                         const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.liveDashboard_vnr&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(r.ok){const d=await r.json();if(d[0]&&d[0].value){setVnrData(mergeVnrData(d[0].value));setLastUpdate(new Date())}}
@@ -15386,7 +15321,7 @@ Regeln:
                         <button onClick={onBack} className="px-4 py-2 rounded-lg text-base font-bold text-slate-400 hover:text-white hover:bg-white/5">← Zurück</button>
                         <h1 className="text-white font-black text-2xl">📊 Live-Dashboard</h1>
                         <div className="flex gap-2 ml-3">
-                            {['vnr','ekd','both'].map(m=>(
+                            {['ekd'].map(m=>(
                                 <button key={m} onClick={()=>setMode(m)} className="px-4 py-2 rounded-lg text-base font-bold transition-all" style={{background:mode===m?'rgba(212,175,55,0.2)':'rgba(255,255,255,0.05)',color:mode===m?'#fbbf24':'#64748b',border:'1px solid '+(mode===m?'rgba(212,175,55,0.3)':'rgba(255,255,255,0.08)'),transform:mode===m?'scale(1.05)':'scale(1)'}}>{m==='vnr'?'📞 VNR':m==='ekd'?'🏢 EKD':'📊 Beide'}</button>
                             ))}
                         </div>
