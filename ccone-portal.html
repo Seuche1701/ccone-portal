@@ -301,7 +301,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.5.6';
+        const APP_VERSION = '6.5.7';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -15050,36 +15050,40 @@ Regeln:
 
                 /* Countdown-Timer für EKD - gekoppelt an Python-Script (sync_status.last_success) */
                 const[countdown,setCountdown]=useState('');
-                const[countdownWarning,setCountdownWarning]=useState(false);
-                const[feedState,setFeedState]=useState('ok');/* ok | overdue | disconnected | dead */
+                const[nowTick,setNowTick]=useState(Date.now());
                 const scriptRefreshFiredRef=useRef(0);
+                /* feedState wird SYNCHRON aus syncStatus berechnet (kein useState -> kein Flacker-Frame beim Re-Mount) */
+                const feedState=React.useMemo(()=>{
+                    if(!isEkd||!isLive)return'ok';
+                    var ls=syncStatus&&syncStatus.last_success?new Date(syncStatus.last_success).getTime():null;
+                    if(!ls)return'dead';
+                    var age=nowTick-ls;if(age<0)age=0;
+                    if(age<=900000)return'ok';/* 0-15 Min */
+                    if(age<=960000)return'overdue';/* 15-16 Min */
+                    if(age<=1020000)return'disconnected';/* 16-17 Min */
+                    return'dead';/* >17 Min */
+                },[syncStatus&&syncStatus.last_success,isEkd,isLive,nowTick]);
+                const countdownWarning=feedState!=='ok';
                 useEffect(()=>{
                     if(!isEkd||!isLive)return;
                     const cycleMs=900000;/* 15 Min Script-Zyklus */
-                    const warnMs=60000;/* letzte 1 Min = Warnung */
                     const tick=()=>{
+                        setNowTick(Date.now());
                         var ls=syncStatus&&syncStatus.last_success?new Date(syncStatus.last_success).getTime():null;
-                        if(!ls){setCountdown('');setCountdownWarning(false);setFeedState('dead');return}
-                        var age=Date.now()-ls;/* wie lange seit letztem erfolgreichen Script-Sync */
-                        if(age<0)age=0;/* Zukunfts-Zeitstempel (Zeitzonen-Versatz) wie 'gerade eben' behandeln */
-                        var remaining=cycleMs-age;/* Zeit bis zum nächsten erwarteten Sync */
+                        if(!ls){setCountdown('');return}
+                        var age=Date.now()-ls;if(age<0)age=0;
+                        var remaining=cycleMs-age;
                         if(remaining>0){
                             var mins=Math.floor(remaining/60000);
                             var secs=Math.floor((remaining%60000)/1000);
                             setCountdown(String(mins).padStart(2,'0')+':'+String(secs).padStart(2,'0'));
-                            setCountdownWarning(remaining<=warnMs);
-                            setFeedState('ok');
                         }else{
-                            /* Countdown abgelaufen: 10s nach Ablauf einmal Portal-Daten neu laden */
-                            setCountdown('00:00');setCountdownWarning(true);
+                            setCountdown('00:00');
+                            /* 10s nach Ablauf einmal Portal-Daten neu laden, pro last_success nur 1x */
                             if(remaining<=-10000&&onScriptRefresh&&scriptRefreshFiredRef.current!==ls){
-                                scriptRefreshFiredRef.current=ls;/* pro last_success nur 1x feuern */
+                                scriptRefreshFiredRef.current=ls;
                                 onScriptRefresh();
                             }
-                            /* Eskalation nach Überfälligkeit (relativ zum letzten Sync) */
-                            if(age>1020000)setFeedState('dead');/* >17 Min */
-                            else if(age>960000)setFeedState('disconnected');/* >16 Min */
-                            else setFeedState('overdue');/* 15-16 Min */
                         }
                     };
                     tick();
