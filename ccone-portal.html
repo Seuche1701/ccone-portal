@@ -38,6 +38,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -263,6 +264,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -292,13 +294,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.5.5';
+        const APP_VERSION = '6.5.6';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -12367,7 +12370,7 @@ Regeln:
             const materials=(appData.trainingMaterials||[]).filter(m=>!currentUser.standort||!m.standort||m.standort==='alle'||m.standort===currentUser.standort);
 
             // Auto-refresh every 15s (skip if save in progress)
-            useEffect(()=>{const poll=setInterval(async()=>{if(window._savingUntil&&Date.now()<window._savingUntil)return;try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};updateData(data,true)}}catch(e){}},15000);return()=>clearInterval(poll)},[]);
+            useEffect(()=>{const poll=setInterval(async()=>{if(window._savingUntil&&Date.now()<window._savingUntil)return;try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};updateData(data,true)}}catch(e){}},900000);return()=>clearInterval(poll)},[]);
 
             const categories=[
                 {id:'datenschutz',label:'🛡️ Teach to Protect',color:'#8b5cf6'},
@@ -13214,7 +13217,7 @@ Regeln:
             /* pausenAwards notification now handled globally in App */
             // Poll disabled - use manual refresh instead
             // Auto-refresh for agents: check for changes every 15 seconds (read-only, no save)
-            useEffect(()=>{if(currentUser?.role!=='user')return;const poll=setInterval(async()=>{if(window._savingUntil&&Date.now()<window._savingUntil)return;try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};updateData(data,true)}}catch(e){}},15000);return()=>clearInterval(poll)},[currentUser]);
+            useEffect(()=>{if(currentUser?.role!=='user')return;const poll=setInterval(async()=>{if(window._savingUntil&&Date.now()<window._savingUntil)return;try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};updateData(data,true)}}catch(e){}},900000);return()=>clearInterval(poll)},[currentUser]);
             
             // Memory State
             const[memoryCards,setMemoryCards]=useState([]);
@@ -14739,15 +14742,15 @@ Regeln:
                         if(r.ok){const d=await r.json();if(d[0])setExcelSyncStatus(d[0])}
                     }catch(e){}};
                     fetchExcel();fetchSyncStatus();
-                    polls.push(setInterval(fetchExcel,300000));/* Excel alle 5 Min */
-                    polls.push(setInterval(fetchSyncStatus,300000));
+                    polls.push(setInterval(fetchExcel,900000));/* Excel alle 15 Min */
+                    polls.push(setInterval(fetchSyncStatus,900000));
                     /* Monatsquoten laden (einmalig + alle 5 Min) */
                     const curMonat=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
                     const fetchMonat=async()=>{try{
                         const r=await fetch(SUPABASE_URL+'/rest/v1/excel_monatsquoten?monat=eq.'+curMonat+'&select=name,standort,termin,no_success,termin_quote',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(r.ok){const d=await r.json();setMonatsQuoten(d)}
                     }catch(e){}};
-                    fetchMonat();polls.push(setInterval(fetchMonat,300000));
+                    fetchMonat();polls.push(setInterval(fetchMonat,900000));
                     /* Fetch-Funktionen für manuelle Buttons speichern */
                     window._ekdRefresh=()=>{fetchEkd();fetchExcel();fetchSyncStatus();fetchMonat()};
                 }
@@ -15037,7 +15040,7 @@ Regeln:
                 </div>);
             };
 
-            const Panel=({title,data,color,isLive,isEkd,onUpload,fullWidth,standort,onStandortChange,onReset,stackedList})=>{
+            const Panel=({title,data,color,isLive,isEkd,onUpload,fullWidth,standort,onStandortChange,onReset,stackedList,syncStatus,onScriptRefresh})=>{
                 const agents=data?.agents||[];
                 const sum=data?.summary||{};
                 const kpi=data?.kpi||{};
@@ -15045,42 +15048,65 @@ Regeln:
                 const visibleAgents=isEkd?agents.filter(a=>(a.termin||0)>0):agents;
                 const activeAgents=[...visibleAgents].sort((a,b)=>(a._offline?1:0)-(b._offline?1:0));
 
-                /* Countdown-Timer für EKD (15 Min Zyklus) */
+                /* Countdown-Timer für EKD - gekoppelt an Python-Script (sync_status.last_success) */
                 const[countdown,setCountdown]=useState('');
                 const[countdownWarning,setCountdownWarning]=useState(false);
+                const[feedState,setFeedState]=useState('ok');/* ok | overdue | disconnected | dead */
+                const scriptRefreshFiredRef=useRef(0);
                 useEffect(()=>{
                     if(!isEkd||!isLive)return;
-                    const intervalMs=300000;/* 5 Min */
+                    const cycleMs=900000;/* 15 Min Script-Zyklus */
                     const warnMs=60000;/* letzte 1 Min = Warnung */
                     const tick=()=>{
-                        if(!data?.updatedAt){setCountdown('');setCountdownWarning(false);return}
-                        var elapsed=Date.now()-new Date(data.updatedAt).getTime();
-                        var remaining=Math.max(0,intervalMs-elapsed);
-                        var mins=Math.floor(remaining/60000);
-                        var secs=Math.floor((remaining%60000)/1000);
-                        setCountdown(String(mins).padStart(2,'0')+':'+String(secs).padStart(2,'0'));
-                        setCountdownWarning(remaining<=warnMs);
+                        var ls=syncStatus&&syncStatus.last_success?new Date(syncStatus.last_success).getTime():null;
+                        if(!ls){setCountdown('');setCountdownWarning(false);setFeedState('dead');return}
+                        var age=Date.now()-ls;/* wie lange seit letztem erfolgreichen Script-Sync */
+                        if(age<0)age=0;/* Zukunfts-Zeitstempel (Zeitzonen-Versatz) wie 'gerade eben' behandeln */
+                        var remaining=cycleMs-age;/* Zeit bis zum nächsten erwarteten Sync */
+                        if(remaining>0){
+                            var mins=Math.floor(remaining/60000);
+                            var secs=Math.floor((remaining%60000)/1000);
+                            setCountdown(String(mins).padStart(2,'0')+':'+String(secs).padStart(2,'0'));
+                            setCountdownWarning(remaining<=warnMs);
+                            setFeedState('ok');
+                        }else{
+                            /* Countdown abgelaufen: 10s nach Ablauf einmal Portal-Daten neu laden */
+                            setCountdown('00:00');setCountdownWarning(true);
+                            if(remaining<=-10000&&onScriptRefresh&&scriptRefreshFiredRef.current!==ls){
+                                scriptRefreshFiredRef.current=ls;/* pro last_success nur 1x feuern */
+                                onScriptRefresh();
+                            }
+                            /* Eskalation nach Überfälligkeit (relativ zum letzten Sync) */
+                            if(age>1020000)setFeedState('dead');/* >17 Min */
+                            else if(age>960000)setFeedState('disconnected');/* >16 Min */
+                            else setFeedState('overdue');/* 15-16 Min */
+                        }
                     };
                     tick();
                     var t=setInterval(tick,1000);
                     return()=>clearInterval(t);
-                },[data?.updatedAt,isEkd,isLive]);
+                },[syncStatus&&syncStatus.last_success,isEkd,isLive]);
 
-                const staleMs=isEkd?300000:60000;
-                const stale=isEkd?countdownWarning:(data?.updatedAt?(Date.now()-new Date(data.updatedAt).getTime()>staleMs):true);
+                const stale=isEkd?(feedState!=='ok'):(data?.updatedAt?(Date.now()-new Date(data.updatedAt).getTime()>60000):true);
+                const feedDead=isEkd&&feedState==='dead';
+                const displayAgents=feedDead?[]:activeAgents;
                 // Auto-adjust: Spalten basierend auf Agent-Anzahl + Breite
-                const n=activeAgents.length;
+                const n=displayAgents.length;
                 const cols=fullWidth?(n<=2?2:n<=4?2:n<=6?3:n<=9?3:n<=12?4:n<=16?4:5):(n<=2?2:n<=4?2:n<=6?3:n<=9?3:4);
                 return(
                 <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                     <div className="px-5 py-4 flex items-center justify-between flex-shrink-0" style={{background:color+'15',borderBottom:'2px solid '+color+'40'}}>
                         <div className="flex items-center gap-4">
                             <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-white text-lg" style={{background:color}}>{title.charAt(0)}</div>
-                            <div><h2 className="text-white font-black text-3xl">{title}</h2><p className="text-lg text-slate-400">{activeAgents.length} Agents aktiv • Stand: {updated}</p></div>
+                            <div><h2 className="text-white font-black text-3xl">{title}</h2><p className="text-lg text-slate-400">{displayAgents.length} Agents aktiv • Stand: {updated}</p></div>
                         </div>
                         <div className="flex items-center gap-3">
-                            {isLive&&!stale&&<span className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-green-400" style={{animation:'pulse 2s infinite'}}/><span className="text-lg text-green-400 font-bold">LIVE</span>{isEkd&&countdown&&<span className="text-sm text-slate-500 font-mono">{countdown}</span>}</span>}
-                            {isLive&&stale&&data&&<span className="flex items-center gap-2"><span className="text-base text-amber-400 font-bold">⏳ Warte auf Daten...</span>{isEkd&&countdown&&<span className="text-sm text-amber-400 font-mono">{countdown}</span>}</span>}
+                            {isLive&&isEkd&&feedState==='ok'&&<span className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-green-400" style={{animation:'pulse 2s infinite'}}/><span className="text-lg text-green-400 font-bold">LIVE</span>{countdown&&<span className="text-sm text-slate-500 font-mono">{countdown}</span>}</span>}
+                            {isLive&&isEkd&&feedState==='overdue'&&<span className="flex items-center gap-2"><span className="text-base text-amber-400 font-bold">⏳ Aktualisierung überfällig</span></span>}
+                            {isLive&&isEkd&&feedState==='disconnected'&&<span className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-orange-500" style={{animation:'pulse 1s infinite'}}/><span className="text-base text-orange-400 font-bold">⚠️ Keine Verbindung zum Datenfeed</span></span>}
+                            {isLive&&isEkd&&feedState==='dead'&&<span className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-red-500"/><span className="text-base text-red-400 font-bold">⛔ Datenfeed offline</span></span>}
+                            {isLive&&!isEkd&&!stale&&<span className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-green-400" style={{animation:'pulse 2s infinite'}}/><span className="text-lg text-green-400 font-bold">LIVE</span></span>}
+                            {isLive&&!isEkd&&stale&&data&&<span className="flex items-center gap-2"><span className="text-base text-amber-400 font-bold">⏳ Warte auf Daten...</span></span>}
                             {onStandortChange&&<div className="flex gap-2">
                                 {[['alle','Alle'],['berlin','Berlin'],['chemnitz','Chemnitz']].map(([v,l])=>(
                                     <button key={v} onClick={()=>onStandortChange(v)} className="px-3 py-1.5 rounded-lg text-sm font-bold" style={{background:standort===v?color+'30':'rgba(255,255,255,0.05)',color:standort===v?color:'#64748b',border:'1px solid '+(standort===v?color+'50':'rgba(255,255,255,0.08)')}}>{l}</button>
@@ -15090,7 +15116,7 @@ Regeln:
                             {onReset&&<button onClick={onReset} className="px-3 py-2 rounded-lg text-sm font-bold" style={{background:'rgba(239,68,68,0.1)',color:'#f87171',border:'1px solid rgba(239,68,68,0.2)'}}>🗑️</button>}
                         </div>
                     </div>
-                    {activeAgents.length>0&&(
+                    {displayAgents.length>0&&(
                         <div className="px-4 py-3 flex-shrink-0">
                             {isEkd?(
                                 <div className="grid grid-cols-4 gap-3">
@@ -15113,15 +15139,15 @@ Regeln:
                         </div>
                     )}
                     <div className="flex-1 overflow-y-auto px-4 pb-4">
-                        {activeAgents.length===0?(
+                        {displayAgents.length===0?(
                             <div className="flex items-center justify-center h-full"><div className="text-center">
-                                <div style={{fontSize:56,opacity:0.3}}>{isEkd?'📅':'📡'}</div>
-                                <p className="text-slate-400 text-lg mt-3 font-medium">{isEkd?'Noch keine Termine bisher abgeschlossen':'Warte auf Daten vom Bookmarklet...'}</p>
-                                <p className="text-slate-600 text-base mt-1">{isEkd?'Termine erscheinen automatisch sobald Daten verfügbar sind':'Bookmarklet auf der Telefonanlage klicken'}</p>
+                                <div style={{fontSize:56,opacity:0.3}}>{feedDead?'🔌':isEkd?'📅':'📡'}</div>
+                                <p className="text-slate-400 text-lg mt-3 font-medium">{feedDead?'Datenfeed offline':isEkd?'Noch keine Termine bisher abgeschlossen':'Warte auf Daten vom Bookmarklet...'}</p>
+                                <p className="text-slate-600 text-base mt-1">{feedDead?'Das Sync-Script läuft nicht oder hat keine Verbindung':isEkd?'Termine erscheinen automatisch sobald Daten verfügbar sind':'Bookmarklet auf der Telefonanlage klicken'}</p>
                             </div></div>
                         ):(
                             <div className={'grid gap-3 grid-cols-'+(stackedList?1:fullWidth?(n<=3?2:n<=6?3:4):(n<=2?1:n<=4?2:3))}>
-                                {activeAgents.map((a,i)=><AgentCard key={a.name||i} a={a} isEkd={isEkd} scale={isEkd&&!fullWidth?(n<=9?1:n<=15?0.85:0.7):1}/>)}
+                                {displayAgents.map((a,i)=><AgentCard key={a.name||i} a={a} isEkd={isEkd} scale={isEkd&&!fullWidth?(n<=9?1:n<=15?0.85:0.7):1}/>)}
                             </div>
                         )}
                     </div>
@@ -15285,7 +15311,7 @@ Regeln:
                 <div className="flex flex-1 overflow-hidden" style={{transformOrigin:'top left',transform:'scale('+zoom+')',width:(100/zoom)+'%',height:(100/zoom)+'%'}}>
                     {(mode==='vnr'||mode==='both')&&<Panel title="VNR" data={vnrData} color="#10b981" isLive={true} isEkd={false} fullWidth={mode==='vnr'} stackedList={mode==='both'} onReset={()=>{vnrCacheRef.current={};setVnrData(null)}}/>}
                     {mode==='both'&&<div className="w-px flex-shrink-0" style={{background:'rgba(255,255,255,0.1)'}}/>}
-                    {(mode==='ekd'||mode==='both')&&<Panel title="EKD" data={finalEkdData} color="#3b82f6" isLive={true} isEkd={true} onUpload={true} fullWidth={mode==='ekd'} standort={ekdStandort} onStandortChange={setEkdStandort}/>}
+                    {(mode==='ekd'||mode==='both')&&<Panel title="EKD" data={finalEkdData} color="#3b82f6" isLive={true} isEkd={true} onUpload={true} fullWidth={mode==='ekd'} standort={ekdStandort} onStandortChange={setEkdStandort} syncStatus={excelSyncStatus} onScriptRefresh={()=>{if(window._ekdRefresh)window._ekdRefresh()}}/>}
                 </div>
                 {/* Dashboard-Bild Overlay */}
                 {dashImg&&(()=>{const animStyle={animationName:dashImgPhase,animationDuration:dashImgPhase.includes('Out')?'1.5s':'1s',animationFillMode:'forwards',animationTimingFunction:'cubic-bezier(0.34,1.56,0.64,1)'};const mediaStyle={maxWidth:'90vw',maxHeight:'85vh',borderRadius:16,boxShadow:dashImg.transparent?'none':'0 0 80px rgba(212,175,55,0.4)',...animStyle};const onVideoEnd=()=>{if(dashImgTimerRef.current)clearTimeout(dashImgTimerRef.current);setDashImgPhase(pickAnim(ANIMS_OUT));setTimeout(async()=>{setDashImg(null);setDashImgPhase('');dashImgBusyRef.current=false;try{var rr=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImageQueue&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});var qq=(await rr.json())[0]?.value||[];await fetch(SUPABASE_URL+'/rest/v1/ccone_data',{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({key:'dashboardImageQueue',value:qq.filter(i=>i.id!==dashImg.id)})})}catch(e){}},1500)};return <div style={{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',background:dashImg.transparent?'transparent':'rgba(0,0,0,0.85)',...animStyle}}>{dashImg.isVideo?<video src={dashImg.data} autoPlay muted style={{width:'100vw',height:'100vh',objectFit:'cover',...animStyle}} onEnded={onVideoEnd}/>:<img src={dashImg.data} style={mediaStyle}/>}</div>})()}
@@ -17805,12 +17831,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -17915,6 +17943,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
