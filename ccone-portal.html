@@ -301,7 +301,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.5.9';
+        const APP_VERSION = '6.6.0';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -358,7 +358,7 @@
         const _sbGet = async () => {
             // Exclude heavy keys (base64-Bilder) that aren't read from appData anyway.
             // dashboardImageQueue & memoryImages werden von ihren eigenen Komponenten separat geladen.
-            const r = await fetch(SUPABASE_URL+'/rest/v1/ccone_data?select=key,value&key=not.in.(dashboardImageQueue,memoryImages,clientPresence,logoutCommand)',{headers:_sbHeaders()});
+            const r = await fetch(SUPABASE_URL+'/rest/v1/ccone_data?select=key,value&key=not.in.(dashboardImageQueue,memoryImages,clientPresence,logoutCommand,unoGames,wvlLost)',{headers:_sbHeaders()});
             const rows = await r.json();
             const d = {};
             for(const row of rows) d[row.key] = row.value;
@@ -369,7 +369,7 @@
             if(toSave.quizzes) toSave.quizzes.forEach(q=>{if(q.type==='memory'&&q.memoryCards)q.memoryCards.forEach(c=>{delete c.image})});
             if(toSave.trainingMaterials) toSave.trainingMaterials.forEach(m=>{delete m.data;delete m._tempData});
             delete toSave.storageConfig;
-            const rows = Object.entries(toSave).filter(([k])=>k!=='storageConfig').map(([key,value])=>({key,value}));
+            const rows = Object.entries(toSave).filter(([k])=>k!=='storageConfig'&&k!=='unoGames'&&k!=='wvlLost').map(([key,value])=>({key,value}));
             const r = await fetch(SUPABASE_URL+'/rest/v1/ccone_data',{method:'POST',headers:_sbHeaders(),body:JSON.stringify(rows)});
             if(!r.ok){const t=await r.text().catch(()=>'');console.error('Supabase save failed:',r.status,t);throw new Error('Supabase save HTTP '+r.status)}
         };
@@ -710,7 +710,7 @@
         
         function Fireworks(){const[visible,setVisible]=useState(true);useEffect(()=>{const timer=setTimeout(()=>setVisible(false),10000);return()=>clearTimeout(timer)},[]);if(!visible)return null;return(<div className="fixed inset-0 pointer-events-none z-50">{[...Array(20)].map((_,i)=>(<div key={i} className="firework" style={{left:`${5+i*4.5}%`,top:`${20+Math.random()*30}%`,animationDelay:`${(i%5)*0.3+Math.floor(i/5)*1.5}s`}}>{[...Array(20)].map((_,j)=>{const angle=(j/20)*360;const dist=80+Math.random()*60;const tx=Math.cos(angle*Math.PI/180)*dist;const ty=Math.sin(angle*Math.PI/180)*dist;const colors=['#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316'];return <div key={j} className="spark" style={{'--tx':`${tx}px`,'--ty':`${ty}px`,background:colors[j%colors.length]}}/>})}</div>))}</div>)}
         
-        const DEFAULT_DATA={users:[{id:'1',username:'admin',password:'admin123',name:'Administrator',role:'admin'}],quizzes:[],assignments:[],results:[],projects:[{id:'1',name:'EKD'},{id:'2',name:'Immoscout'},{id:'3',name:'VNR'}],agents:[],absences:[],unoGames:[],pokerGames:[],coachingSessions:[],customKeywords:{},customTemplates:{},trainingMaterials:[],wvlLost:[]};
+        const DEFAULT_DATA={users:[{id:'1',username:'admin',password:'admin123',name:'Administrator',role:'admin'}],quizzes:[],assignments:[],results:[],projects:[{id:'1',name:'EKD'},{id:'2',name:'Immoscout'},{id:'3',name:'VNR'}],agents:[],absences:[],unoGames:[],pokerGames:[],coachingSessions:[],customKeywords:{},customTemplates:{},trainingMaterials:[]};
         
         // Apps Script Code
         const APPS_SCRIPT_CODE=`// ccone Quiz Backend v5.0 - GENERIC - Nie wieder redeployen!
@@ -1285,10 +1285,10 @@ function getOrCreateSheet(){
             const saveScriptUrl=()=>{if(!scriptUrl.includes('script.google.com')){showNotification('Ungültige URL','error');return}localStorage.setItem('ccone-script-url',scriptUrl);window.location.reload()};
             const updateData=async(newData,skipSave)=>{
                 const safeData={...newData,customKeywords:newData.customKeywords||{},customTemplates:newData.customTemplates||{}};
-                setAppData(safeData);if(skipSave)return;
+                setAppData(prev=>({...safeData,unoGames:(safeData.unoGames!==undefined?safeData.unoGames:prev?.unoGames)}));if(skipSave)return;
                 window._savingUntil=Date.now()+10000;
                 try{await api.saveData(safeData)}catch(e){showNotification('Speicherfehler','error')}};
-            const refreshData=async()=>{setLoading(true);try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};setAppData(data);showNotification('Aktualisiert!')}}catch(e){showNotification('Fehler','error')}finally{setLoading(false)}};
+            const refreshData=async()=>{setLoading(true);try{const data=await api.getData();if(data){if(!data.customKeywords)data.customKeywords={};if(!data.customTemplates)data.customTemplates={};setAppData(prev=>({...data,unoGames:prev?.unoGames||data.unoGames}));showNotification('Aktualisiert!')}}catch(e){showNotification('Fehler','error')}finally{setLoading(false)}};
             const refreshUnoGamesOnly=async()=>{try{const games=await api.getUnoGames();if(Array.isArray(games)){setAppData(prev=>({...prev,unoGames:games}))}}catch(e){console.error('UNO refresh error:',e)}};
             const refreshPokerGamesOnly=async()=>{try{const games=await api.getPokerGames();if(Array.isArray(games)){setAppData(prev=>({...prev,pokerGames:games}))}}catch(e){console.error('Poker refresh error:',e)}};
             const handleLogin=(username,password)=>{const user=appData.users.find(u=>u.username===username&&u.password===password);if(user){setCurrentUser(user);const hasAdmin=user.role==='admin'||user.role==='teamleiter'||(user.role==='standardbenutzer'&&(user.adminTabs||[]).length>0);if(hasAdmin){setView('choose')}else{setView('hub')}showNotification(`Willkommen, ${user.name}!`)}else{showNotification('Ungültige Anmeldedaten','error')}};
@@ -1538,7 +1538,7 @@ function getOrCreateSheet(){
         function AdminDashboard({currentUser,appData,updateData,refreshData,onLogout,showNotification,onSettings,onSwitchView,onOpenDashboard}){
             const[activeTab,setActiveTab]=useState('overview');
             const[editingQuiz,setEditingQuiz]=useState(null);
-            const menuItems=[{id:'overview',label:'Übersicht',icon:'chart'},{id:'users',label:'Benutzer',icon:'users'},{id:'clients',label:'Aktive Clients',icon:'users'},{id:'quizzes',label:'Lernwelt',icon:'brain'},{id:'assignments',label:'Zielgruppen',icon:'target'},{id:'results',label:'Auswertungen',icon:'award'},{id:'coaching',label:'Coaching',icon:'headphones'},{id:'training',label:'Trainingscenter',icon:'book'},{id:'absence',label:'Abwesenheit',icon:'calendar'},{id:'termine',label:'Termine',icon:'clock'},{id:'spaetschicht',label:'Spätschicht',icon:'clock'},{id:'turnier',label:'Turnier',icon:'trophy'},{id:'news',label:'News',icon:'bell'},{id:'messages',label:'Nachrichten',icon:'chat'},{id:'rewards',label:'Belohnungen',icon:'trophy'},{id:'pausen',label:'Pausen',icon:'coffee'},{id:'storage',label:'Speicher',icon:'database'},{id:'wvlLost',label:'WVL Lost',icon:'target'},{id:'datenschutz',label:'Datenschutz',icon:'eye'},{id:'update',label:'Update',icon:'rocket'}];
+            const menuItems=[{id:'overview',label:'Übersicht',icon:'chart'},{id:'users',label:'Benutzer',icon:'users'},{id:'clients',label:'Aktive Clients',icon:'users'},{id:'quizzes',label:'Lernwelt',icon:'brain'},{id:'assignments',label:'Zielgruppen',icon:'target'},{id:'results',label:'Auswertungen',icon:'award'},{id:'coaching',label:'Coaching',icon:'headphones'},{id:'training',label:'Trainingscenter',icon:'book'},{id:'absence',label:'Abwesenheit',icon:'calendar'},{id:'termine',label:'Termine',icon:'clock'},{id:'spaetschicht',label:'Spätschicht',icon:'clock'},{id:'turnier',label:'Turnier',icon:'trophy'},{id:'news',label:'News',icon:'bell'},{id:'messages',label:'Nachrichten',icon:'chat'},{id:'rewards',label:'Belohnungen',icon:'trophy'},{id:'pausen',label:'Pausen',icon:'coffee'},{id:'storage',label:'Speicher',icon:'database'},{id:'datenschutz',label:'Datenschutz',icon:'eye'},{id:'update',label:'Update',icon:'rocket'}];
             // === Sidebar-Personalisierung (Admin, pro Browser via localStorage) ===
             const SB_ORDER_KEY='ccone-sidebar-order',SB_HIDDEN_KEY='ccone-sidebar-hidden';
             const[sbEdit,setSbEdit]=useState(false);
@@ -1677,7 +1677,7 @@ function getOrCreateSheet(){
                         {activeTab==='turnier'&&<WheelTournament appData={filteredData} updateData={updateData} showNotification={showNotification} currentUser={currentUser} isAdmin={true}/>}
                         {activeTab==='rewards'&&<RewardsTab appData={filteredData} updateData={updateData} showNotification={showNotification}/>}
                         {activeTab==='storage'&&<StorageTab appData={appData} updateData={updateData} showNotification={showNotification} api={api}/>}
-                        {activeTab==='wvlLost'&&<WvlLostTab appData={filteredData} updateData={updateData} showNotification={showNotification}/>}
+                        {/* WvlLostTab entfernt */}
                         {activeTab==='datenschutz'&&<DatenschutzTab showNotification={showNotification}/>}
                         {activeTab==='update'&&<UpdateTab showNotification={showNotification}/>}
                     </div>
@@ -3398,7 +3398,7 @@ function getOrCreateSheet(){
             const[filter,setFilter]=useState('all');
             const ROLES=[{id:'admin',label:'👑 Admin',color:'#7c3aed',desc:'Voller Zugriff'},{id:'teamleiter',label:'🎖️ Teamleiter',color:'#f59e0b',desc:'Admin + Agent, eingeschränkt'},{id:'standardbenutzer',label:'👤 Standardbenutzer',color:'#3b82f6',desc:'Admin + Agent, eingeschränkt'},{id:'user',label:'🎯 Agent',color:'#10b981',desc:'Nur Agent-Oberfläche'}];
             const STANDORTE=[{id:'',label:'— Kein Standort'},{id:'berlin',label:'📍 Berlin'},{id:'chemnitz',label:'📍 Chemnitz'}];
-            const ADMIN_TABS=[{id:'overview',label:'📊 Übersicht'},{id:'users',label:'👥 Benutzer'},{id:'quizzes',label:'🧠 Lernwelt'},{id:'assignments',label:'🎯 Zielgruppen'},{id:'results',label:'📊 Auswertungen'},{id:'coaching',label:'🎧 Coaching'},{id:'training',label:'📚 Trainingscenter'},{id:'absence',label:'📅 Abwesenheit'},{id:'termine',label:'⏰ Termine'},{id:'spaetschicht',label:'🌙 Spätschicht'},{id:'turnier',label:'🏆 Turnier'},{id:'news',label:'📰 News'},{id:'messages',label:'💬 Nachrichten'},{id:'rewards',label:'🎁 Belohnungen'},{id:'pausen',label:'☕ Pausen'},{id:'storage',label:'💾 Speicher'},{id:'wvlLost',label:'📋 WVL Lost'},{id:'datenschutz',label:'🔒 Datenschutz'},{id:'update',label:'🚀 Update'}];
+            const ADMIN_TABS=[{id:'overview',label:'📊 Übersicht'},{id:'users',label:'👥 Benutzer'},{id:'quizzes',label:'🧠 Lernwelt'},{id:'assignments',label:'🎯 Zielgruppen'},{id:'results',label:'📊 Auswertungen'},{id:'coaching',label:'🎧 Coaching'},{id:'training',label:'📚 Trainingscenter'},{id:'absence',label:'📅 Abwesenheit'},{id:'termine',label:'⏰ Termine'},{id:'spaetschicht',label:'🌙 Spätschicht'},{id:'turnier',label:'🏆 Turnier'},{id:'news',label:'📰 News'},{id:'messages',label:'💬 Nachrichten'},{id:'rewards',label:'🎁 Belohnungen'},{id:'pausen',label:'☕ Pausen'},{id:'storage',label:'💾 Speicher'},{id:'datenschutz',label:'🔒 Datenschutz'},{id:'update',label:'🚀 Update'}];
             const AGENT_PERMS=[{id:'agent',label:'🎯 Agent'},{id:'coaching',label:'🎧 Coaching'},{id:'results',label:'📊 Ergebnisse'},{id:'training',label:'📚 Training'},{id:'unoHost',label:'🎮 UNO Host'}];
             const handleSubmit=()=>{if(!form.username||!form.password||!form.name)return;onAdd(form);setForm({username:'',password:'',name:'',role:'user',standort:'',permissions:['agent'],adminTabs:[]});setShowForm(false)};
             const startEdit=(user)=>{setEditingUser({...user,permissions:user.permissions||['agent'],adminTabs:user.adminTabs||[],standort:user.standort||''})};
@@ -3724,581 +3724,6 @@ function getOrCreateSheet(){
                         </div>
                     </div>}
                 </div>
-            </div>)
-        }
-
-        // ═══ WVL OBWOHL LOST TAB ═══
-        function WvlLostTab({appData,updateData,showNotification}){
-            const[entries,setEntries]=useState(appData.wvlLost||[]);
-            const[excelRef,setExcelRef]=useState(null); // {rows:[{leadId,nachname,leadOwner,ergebnis,kommentar,zeitpunkt,user,dauer,rufnummer,...}], raw:[[...]]}
-            const[activeTab,setActiveTab]=useState('trefferliste');
-            const[selectedLead,setSelectedLead]=useState(null);
-            const[search,setSearch]=useState('');
-            const[pasteText,setPasteText]=useState('');
-            const[showPaste,setShowPaste]=useState(false);
-            const[page,setPage]=useState(1);
-            const perPage=20;
-            const fileRef=React.useRef(null);
-            const excelFileRef=React.useRef(null);
-            const[sheetPicker,setSheetPicker]=useState(null); // {wb, fileName, sheetNames}
-
-
-            useEffect(()=>{setEntries(appData.wvlLost||[])},[appData.wvlLost]);
-
-            // Try to restore excel ref from localStorage
-            useEffect(()=>{
-                try{
-                    const saved=localStorage.getItem('wvl-excel-ref');
-                    if(saved){const parsed=JSON.parse(saved);if(parsed&&parsed.rows)setExcelRef(parsed)}
-                }catch(e){}
-            },[]);
-
-            // Save excel ref to localStorage when changed
-            useEffect(()=>{
-                if(excelRef){try{localStorage.setItem('wvl-excel-ref',JSON.stringify(excelRef))}catch(e){}}
-            },[excelRef]);
-
-            // ── Excel Reference Loading ──
-            const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-            const autoDetectSheet=(names)=>{
-                // Try exact-ish matches first: "Datensätze (Terminierung)" with umlaut normalization
-                let found=names.find(s=>{const n=norm(s);return n.includes('datens')&&n.includes('termin')});
-                if(!found)found=names.find(s=>norm(s).includes('datensatz')||norm(s).includes('datensatze'));
-                if(!found)found=names.find(s=>norm(s).includes('terminierung'));
-                if(!found)found=names.find(s=>norm(s).includes('termin'));
-                return found||null;
-            };
-
-            const processSheet=(wb,sheetName,fileName)=>{
-                const ws=wb.Sheets[sheetName];
-                const rawRows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
-                if(rawRows.length<2){showNotification('Leeres Tabellenblatt: '+sheetName,'error');return}
-                // Auto-detect header row: scan first 20 rows for one containing "lead id" / "id" / "nachname" etc.
-                let headerRowIdx=0;
-                const headerKeywords=['lead id','leadid','lead-id','nachname','lead owner','leadowner','ergebnis','rufnummer','zeitpunkt'];
-                for(let r=0;r<Math.min(20,rawRows.length);r++){
-                    const cells=rawRows[r].map(c=>String(c||'').trim().toLowerCase());
-                    const matches=headerKeywords.filter(kw=>cells.some(c=>c.includes(kw)));
-                    if(matches.length>=2||(cells.some(c=>c==='id'||c.includes('lead id')||c.includes('leadid')))){headerRowIdx=r;break}
-                }
-                const hdr=rawRows[headerRowIdx].map(h=>String(h).trim().toLowerCase());
-                console.log('[WVL] Sheet "'+sheetName+'" header row #'+headerRowIdx+':',JSON.stringify(hdr));
-                // Column finders
-                const findExact=(names)=>hdr.findIndex(h=>names.includes(h));
-                const findSub=(keys)=>{
-                    let idx=hdr.findIndex(h=>keys.some(k=>h.includes(k)));
-                    if(idx>=0)return idx;
-                    const normHdr=hdr.map(h=>h.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').trim());
-                    const normKeys=keys.map(k=>k.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').trim());
-                    idx=normHdr.findIndex(h=>normKeys.some(k=>h.includes(k)));
-                    return idx;
-                };
-                // Lead ID
-                const iLeadId=findExact(['leadid','lead id','lead-id']); 
-                const finalIdCol=iLeadId>=0?iLeadId:hdr.findIndex(h=>h==='id');
-                // Names & owners
-                const iNachname=findExact(['nachname'])===-1?findSub(['nachname','kundenname']):findExact(['nachname']);
-                const iLeadOwnerName=findExact(['lead owner']); // exact: "lead owner" (name), NOT "leadowner id"
-                const iLeadOwnerId=findSub(['leadowner id']);
-                const iAgent=findExact(['agent']); // exact to avoid "agent erster nettokontakt"
-                // Ergebnis
-                const iErgebnis=findExact(['ergebniscode'])===-1?findSub(['ergebnis','result']):findExact(['ergebniscode']);
-                const iErgebnisBeschr=findSub(['ergebniscode beschreibung']);
-                const iKommentar=findSub(['ergebniscode bemerkung','bemerkung','kommentar','notiz']);
-                // Dates & times
-                const iImportZeitpunkt=findSub(['import zeitpunkt']);
-                const iErstellZeitpunkt=findSub(['erstellungs- zeitpunkt','erstellungszeitpunkt']);
-                const iImportDatum=findSub(['import datum']);
-                const iErstellDatum=findSub(['erstellungs- datum','erstellungsdatum']);
-                // Contact info
-                const iStatus=findExact(['status']);
-                const iAnrufversuche=findExact(['anrufversuche'])===-1?findSub(['anrufversuche']):findExact(['anrufversuche']);
-                const iLeadQuelle=findSub(['lead quelle','leadquelle']);
-                const iLeadEmail=findSub(['lead email','email']);
-                const iAufmasstermin=findSub(['aufmass','aufmaß']);
-                const iGlobalTermin=findSub(['globaler termin']);
-                const iErsterNetto=findSub(['erster nettokontakt']);
-                const iKampagne=findExact(['kampagne'])===-1?findSub(['kampagne']):findExact(['kampagne']);
-                const iLinkLM=findSub(['link lm']);
-                const g=(r,i)=>i>=0?String(r[i]||'').trim():'';
-                const colMap={LeadID:finalIdCol,Nachname:iNachname,'Lead Owner':iLeadOwnerName,'LeadOwner ID':iLeadOwnerId,Agent:iAgent,Ergebnis:iErgebnis,'Ergebnis Beschr.':iErgebnisBeschr,Kommentar:iKommentar,Status:iStatus,Anrufversuche:iAnrufversuche,'Import Zeitpunkt':iImportZeitpunkt,'Erstell. Zeitpunkt':iErstellZeitpunkt};
-                console.log('[WVL] Column mapping:',colMap);
-                console.log('[WVL] All headers:',hdr);
-                if(finalIdCol===-1){showNotification('Spalte "Lead ID" / "ID" nicht gefunden. Header-Zeile #'+headerRowIdx+', Spalten: '+hdr.join(', '),'error');return}
-                const rows=[];
-                for(let i=headerRowIdx+1;i<rawRows.length;i++){
-                    const r=rawRows[i];
-                    const leadId=String(r[finalIdCol]||'').trim().replace(/\.0$/,'');
-                    if(!leadId||!/^\d+$/.test(leadId))continue;
-                    rows.push({
-                        leadId,
-                        nachname:g(r,iNachname)||'-',
-                        leadOwner:g(r,iLeadOwnerName)||g(r,iLeadOwnerId)||'-',
-                        leadOwnerId:g(r,iLeadOwnerId)||'-',
-                        agent:g(r,iAgent)||'-',
-                        ergebnis:g(r,iErgebnis)||'-',
-                        ergebnisBeschr:g(r,iErgebnisBeschr)||'-',
-                        kommentar:g(r,iKommentar)||'-',
-                        status:g(r,iStatus)||'-',
-                        anrufversuche:g(r,iAnrufversuche)||'-',
-                        importZeitpunkt:g(r,iImportZeitpunkt)||'-',
-                        erstellZeitpunkt:g(r,iErstellZeitpunkt)||'-',
-                        importDatum:g(r,iImportDatum)||'-',
-                        erstellDatum:g(r,iErstellDatum)||'-',
-                        leadQuelle:g(r,iLeadQuelle)||'-',
-                        leadEmail:g(r,iLeadEmail)||'-',
-                        aufmasstermin:g(r,iAufmasstermin)||'-',
-                        globalTermin:g(r,iGlobalTermin)||'-',
-                        ersterNetto:g(r,iErsterNetto)||'-',
-                        kampagne:g(r,iKampagne)||'-',
-                        linkLM:g(r,iLinkLM)||'-'
-                    });
-                }
-                const previewRaw=rawRows.slice(headerRowIdx,headerRowIdx+501);
-                setExcelRef({rows,raw:previewRaw,sheetName,fileName,loadedAt:new Date().toLocaleString('de-DE')});
-                setSheetPicker(null);
-                const mapped=Object.entries(colMap).filter(([k,v])=>v>=0).map(([k,v])=>k+'→'+hdr[v]);
-                const unmapped=Object.entries(colMap).filter(([k,v])=>v===-1).map(([k])=>k);
-                showNotification(rows.length+' Datensätze aus "'+sheetName+'" · '+mapped.length+' Spalten erkannt'+(unmapped.length?' · Nicht gefunden: '+unmapped.join(', '):''));
-                // Re-match existing entries
-                if((appData.wvlLost||[]).length>0){
-                    const lookup=new Map();
-                    rows.forEach(r=>{if(!lookup.has(r.leadId))lookup.set(r.leadId,[]);lookup.get(r.leadId).push(r)});
-                    const updated=(appData.wvlLost||[]).map(entry=>{
-                        const matches=lookup.get(entry.leadId)||[];
-                        return{...entry,matchStatus:matches.length>0?'found':'missing',excelData:matches.length>0?matches:null,matchCount:matches.length};
-                    });
-                    updateData({...appData,wvlLost:updated});
-                }
-            };
-
-            const loadExcelReference=(e)=>{
-                const file=e.target.files[0];if(!file)return;
-                const reader=new FileReader();
-                reader.onload=(evt)=>{
-                    try{
-                        const wb=XLSX.read(evt.target.result,{type:'array'});
-                        console.log('[WVL] Excel sheets found:',wb.SheetNames);
-                        const detected=autoDetectSheet(wb.SheetNames);
-                        if(detected){
-                            processSheet(wb,detected,file.name);
-                        }else if(wb.SheetNames.length===1){
-                            processSheet(wb,wb.SheetNames[0],file.name);
-                        }else{
-                            // Show sheet picker
-                            setSheetPicker({wb,fileName:file.name,sheetNames:wb.SheetNames});
-                            showNotification('Tabellenblatt "Datensätze (Terminierung)" nicht automatisch erkannt. Bitte wählen.','error');
-                        }
-                    }catch(err){console.error(err);showNotification('Excel-Fehler: '+err.message,'error')}
-                };
-                reader.readAsArrayBuffer(file);
-                e.target.value='';
-            };
-
-            // ── Cross-reference helper ──
-            const crossReference=(imported)=>{
-                if(!excelRef||!excelRef.rows){return imported.map(e=>({...e,matchStatus:'no-ref',excelData:null,matchCount:0}))}
-                const lookup=new Map();
-                excelRef.rows.forEach(r=>{if(!lookup.has(r.leadId))lookup.set(r.leadId,[]);lookup.get(r.leadId).push(r)});
-                return imported.map(entry=>{
-                    const matches=lookup.get(entry.leadId)||[];
-                    return{...entry,matchStatus:matches.length>0?'found':'missing',excelData:matches.length>0?matches:null,matchCount:matches.length};
-                });
-            };
-
-            // ── Paste Import ──
-            const importPaste=()=>{
-                if(!pasteText.trim()){showNotification('Bitte Daten einfügen','error');return}
-                const lines=pasteText.trim().split(/\n/);
-                const imported=[];
-                for(let i=0;i<lines.length;i++){
-                    const line=lines[i].trim();
-                    if(!line)continue;
-                    const parts=line.split(/\t/);
-                    let datum='',leadId='',kommentar='',status='';
-                    if(parts.length>=3){
-                        datum=parts[0].trim();leadId=parts[1].trim();kommentar=parts[2].trim();
-                        const lastPart=parts[parts.length-1].trim();
-                        if(lastPart.toLowerCase()==='erledigt'){status='Erledigt';if(parts.length>3)kommentar=parts.slice(2,parts.length-1).join(' ').trim()}
-                    }else if(parts.length===2){
-                        if(/^\d{3,8}$/.test(parts[0].trim())){leadId=parts[0].trim();kommentar=parts[1].trim()}
-                        else if(/^\d{3,8}$/.test(parts[1].trim())){datum=parts[0].trim();leadId=parts[1].trim()}
-                        else{datum=parts[0].trim();kommentar=parts[1].trim()}
-                    }else{
-                        const numMatch=line.match(/\b(\d{3,8})\b/);
-                        if(numMatch)leadId=numMatch[1];else continue;
-                    }
-                    if(!leadId||!/^\d+$/.test(leadId))continue;
-                    if(leadId.toLowerCase()==='id'||leadId.toLowerCase()==='leadid')continue;
-                    imported.push({uid:Date.now()+'_p'+i,datum,leadId,kommentar,status});
-                }
-                if(imported.length===0){showNotification('Keine gültigen Einträge gefunden','error');return}
-                // Cross-reference with Excel
-                const matched=crossReference(imported);
-                // Merge: don't duplicate by leadId
-                const existing=new Set((appData.wvlLost||[]).map(e=>e.leadId));
-                let added=0,dupes=0;
-                const merged=[...(appData.wvlLost||[])];
-                matched.forEach(entry=>{
-                    if(!existing.has(entry.leadId)){merged.push(entry);existing.add(entry.leadId);added++}else{dupes++}
-                });
-                updateData({...appData,wvlLost:merged});
-                setPasteText('');setShowPaste(false);
-                const parts=[added+' neue Einträge'];
-                if(dupes>0)parts.push(dupes+' Duplikate übersprungen');
-                showNotification(parts.join(' · '));
-            };
-
-            // ── Excel file import ──
-            const importExcel=(e)=>{
-                const file=e.target.files[0];if(!file)return;
-                const reader=new FileReader();
-                reader.onload=(evt)=>{
-                    try{
-                        const wb=XLSX.read(evt.target.result,{type:'array'});
-                        const ws=wb.Sheets[wb.SheetNames[0]];
-                        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-                        if(rows.length<2){showNotification('Leere Datei','error');return}
-                        const hdr=rows[0].map(h=>String(h).trim().toLowerCase());
-                        let iDatum=hdr.findIndex(h=>h.includes('datum'));
-                        let iId=hdr.findIndex(h=>h==='id'||h.includes('leadid')||h.includes('lead id'));
-                        let iKommentar=hdr.findIndex(h=>h.includes('kommentar')||h.includes('bemerkung')||h.includes('grund')||h.includes('passiert'));
-                        if(iDatum===-1)iDatum=0;if(iId===-1)iId=1;if(iKommentar===-1)iKommentar=2;
-                        const imported=[];
-                        for(let i=1;i<rows.length;i++){
-                            const r=rows[i];if(!r||r.length<2)continue;
-                            let datum=r[iDatum]||'';
-                            if(typeof datum==='number'){const d=XLSX.SSF.parse_date_code(datum);if(d)datum=String(d.d).padStart(2,'0')+'.'+String(d.m).padStart(2,'0')+'.'+d.y}
-                            const id=String(r[iId]||'').trim().replace(/\.0$/,'');
-                            const kommentar=String(r[iKommentar]||'').trim();
-                            if(!id&&!kommentar)continue;
-                            imported.push({uid:Date.now()+'_'+i,datum:String(datum).trim(),leadId:id,kommentar});
-                        }
-                        const matched=crossReference(imported);
-                        const existing=new Set((appData.wvlLost||[]).map(e=>e.leadId));
-                        let added=0;const merged=[...(appData.wvlLost||[])];
-                        matched.forEach(entry=>{if(!existing.has(entry.leadId)){merged.push(entry);existing.add(entry.leadId);added++}});
-                        updateData({...appData,wvlLost:merged});
-                        showNotification(added+' neue Einträge importiert');
-                    }catch(err){console.error(err);showNotification('Import-Fehler: '+err.message,'error')}
-                };
-                reader.readAsArrayBuffer(file);e.target.value='';
-            };
-
-            // ── Actions ──
-            const toggleErledigt=(uid)=>{
-                const now=new Date().toLocaleDateString('de-DE');
-                const updated=(appData.wvlLost||[]).map(e=>e.uid===uid?{...e,status:e.status==='Erledigt'?'':'Erledigt',erledigtAm:e.status==='Erledigt'?null:now}:e);
-                updateData({...appData,wvlLost:updated});
-            };
-
-            const deleteEntry=(uid)=>{
-                const updated=(appData.wvlLost||[]).filter(e=>e.uid!==uid);
-                updateData({...appData,wvlLost:updated});
-                if(selectedLead&&selectedLead.uid===uid)setSelectedLead(null);
-                showNotification('Eintrag gelöscht');
-            };
-
-            const clearAll=()=>{
-                updateData({...appData,wvlLost:[]});
-                setSelectedLead(null);
-                showNotification('Alle Einträge gelöscht');
-            };
-
-            const doExport=(data)=>{
-                const rows=data.map(e=>({Status:e.matchStatus==='found'?'Gefunden':e.matchStatus==='missing'?'Fehlt':'-','Lead ID':e.leadId,Datum:e.datum,'Was ist passiert?':e.kommentar,Nachname:e.excelData?e.excelData[0].nachname:'-','Lead Owner':e.excelData?e.excelData[0].leadOwner:'-',Agent:e.excelData?e.excelData[0].agent:'-',Ergebnis:e.excelData?e.excelData[0].ergebnis:'-','Ergebnis Bemerkung':e.excelData?e.excelData[0].kommentar:'-','Excel-Status':e.excelData?e.excelData[0].status:'-',Anrufversuche:e.excelData?e.excelData[0].anrufversuche:'-','Bearbeitungsstatus':e.status||'Offen'}));
-                const ws=XLSX.utils.json_to_sheet(rows);
-                ws['!cols']=[{wch:10},{wch:10},{wch:12},{wch:60},{wch:20},{wch:20},{wch:15},{wch:40},{wch:12}];
-                const wb=XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb,ws,'WVL Abgleich');
-                XLSX.writeFile(wb,'wvl_abgleich_export.xlsx');
-                showNotification(data.length+' Einträge exportiert');
-            };
-
-            // ── Statistics ──
-            const stats={
-                eingefuegt:entries.length,
-                gefunden:entries.filter(e=>e.matchStatus==='found').length,
-                mehrfach:entries.filter(e=>(e.matchCount||0)>1).length,
-                fehlt:entries.filter(e=>e.matchStatus==='missing').length
-            };
-            const erledigte=entries.filter(e=>e.status==='Erledigt');
-
-            // ── Filtering ──
-            let filtered=entries.filter(e=>e.status!=='Erledigt');
-            if(search.trim()){
-                const s=search.toLowerCase();
-                filtered=filtered.filter(e=>(e.leadId||'').toLowerCase().includes(s)||(e.kommentar||'').toLowerCase().includes(s)||(e.datum||'').toLowerCase().includes(s)||(e.excelData&&e.excelData[0].nachname||'').toLowerCase().includes(s));
-            }
-            const totalPages=Math.max(1,Math.ceil(filtered.length/perPage));
-            const paginated=filtered.slice((page-1)*perPage,page*perPage);
-
-            // ── Stat Card ──
-            const StatCard=({label,value,color})=>(<div className="rounded-xl px-4 py-3 border" style={{background:color==='green'?'rgba(16,185,129,0.1)':color==='yellow'?'rgba(234,179,8,0.1)':color==='red'?'rgba(239,68,68,0.1)':'rgba(255,255,255,0.03)',borderColor:color==='green'?'rgba(16,185,129,0.25)':color==='yellow'?'rgba(234,179,8,0.25)':color==='red'?'rgba(239,68,68,0.25)':'rgba(255,255,255,0.08)'}}>
-                <div className="text-xs text-slate-400 mb-0.5">{label}</div>
-                <div className="text-2xl font-bold" style={{color:color==='green'?'#10b981':color==='yellow'?'#eab308':color==='red'?'#ef4444':'#fff'}}>{value}</div>
-            </div>);
-
-            // ── Tab Button ──
-            const TabBtn=({id,label,icon,badge})=>(<button onClick={()=>{setActiveTab(id);setPage(1)}} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab===id?'text-white shadow-lg':'text-slate-400 hover:text-white hover:bg-white/5'}`} style={activeTab===id?{background:'linear-gradient(135deg,#0ea5e9,#0284c7)'}:{}}>{icon&&<span>{icon}</span>}{label}{badge!==undefined&&<span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab===id?'bg-white/20':'bg-slate-700 text-slate-300'}`}>{badge}</span>}</button>);
-
-            // ── Status Badge ──
-            const StatusBadge=({status})=>{
-                if(status==='found')return <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Gefunden</span>;
-                if(status==='missing')return <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30">Fehlt</span>;
-                return <span className="px-2 py-0.5 rounded text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30">–</span>;
-            };
-
-            return(<div className="animate-fade-in">
-                {/* Header */}
-                <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
-                    <div>
-                        <h2 className="text-xl font-bold text-white">📋 WVL obwohl Lost</h2>
-                        <p className="text-xs text-slate-500">Abgleich gegen Excel-Referenzdatei{excelRef?' · '+excelRef.fileName+' ('+excelRef.rows.length+' Datensätze)':' · Keine Referenz geladen'}</p>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                        <input type="file" ref={excelFileRef} accept=".xlsx,.xls,.csv" onChange={loadExcelReference} className="hidden"/>
-                        <button onClick={()=>excelFileRef.current?.click()} className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium border ${excelRef?'bg-emerald-900/30 text-emerald-300 border-emerald-500/30 hover:bg-emerald-900/50':'bg-amber-900/30 text-amber-300 border-amber-500/30 hover:bg-amber-900/50 animate-pulse'}`}><Icon name="database" size={14}/>{excelRef?'Excel-Referenz ändern':'Excel-Referenz laden'}</button>
-                        <input type="file" ref={fileRef} accept=".xlsx,.xls,.csv" onChange={importExcel} className="hidden"/>
-                        <button onClick={()=>fileRef.current?.click()} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-900/30 text-blue-300 border border-blue-500/30 hover:bg-blue-900/50"><Icon name="plus" size={14}/>Import Gelbe Liste</button>
-                        <button onClick={()=>setShowPaste(!showPaste)} className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium border ${showPaste?'bg-amber-900/30 text-amber-300 border-amber-500/30':'bg-slate-800/50 text-slate-300 border-slate-600 hover:bg-slate-700/50'}`}><Icon name="edit" size={14}/>Einfügen</button>
-                        <button onClick={()=>doExport(entries)} disabled={entries.length===0} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-900/30 text-purple-300 border border-purple-500/30 hover:bg-purple-900/50 disabled:opacity-30"><Icon name="download" size={14}/>Export</button>
-                        {entries.length>0&&<button onClick={clearAll} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-900/30 text-red-300 border border-red-500/30 hover:bg-red-900/50"><Icon name="trash" size={14}/>Alle löschen</button>}
-                    </div>
-                </div>
-
-                {/* Paste Import Area */}
-                {showPaste&&<div className="glass-card rounded-xl p-3 mb-3 animate-fade-in">
-                    <div className="flex justify-between items-center mb-2">
-                        <h3 className="text-sm font-bold text-white">📋 Gelbe Liste einfügen</h3>
-                        <button onClick={()=>{setShowPaste(false);setPasteText('')}} className="text-xs text-slate-400 hover:text-red-400">Schließen</button>
-                    </div>
-                    <p className="text-xs text-slate-500 mb-2">Kopiere Zeilen aus der gelben Liste (Datum, Lead-ID, Kommentar — Tab-getrennt). Wird automatisch gegen die Excel-Referenz abgeglichen.</p>
-                    <textarea value={pasteText} onChange={e=>setPasteText(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-800/80 text-white text-xs font-mono p-3 resize-none placeholder-slate-600" rows={8} placeholder={"26.05.2026\t1616278\tKD meint thema hat sich erledigt PV anlage ist kein thema\n26.05.2026\t1570232\tWV auf 3 Monaten wenn Mann krank ist?\n27.05.2026\t1623037\tKunde gibt an, wenn Termine, dann nur diese Woche"}/>
-                    <div className="flex gap-2 mt-2">
-                        <button onClick={importPaste} className="flex items-center gap-1 px-4 py-1.5 rounded-lg text-sm font-bold" style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff'}}><Icon name="check" size={14}/>{pasteText.trim().split(/\n/).filter(l=>l.trim()).length} Zeilen importieren & abgleichen</button>
-                        <button onClick={()=>setPasteText('')} className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white">Leeren</button>
-                    </div>
-                </div>}
-
-                {/* Sheet Picker */}
-                {sheetPicker&&<div className="glass-card rounded-xl p-4 mb-3 animate-fade-in border border-amber-500/30">
-                    <div className="flex justify-between items-center mb-3">
-                        <div>
-                            <h3 className="text-sm font-bold text-amber-300">📊 Tabellenblatt wählen</h3>
-                            <p className="text-xs text-slate-400 mt-1">Datei: {sheetPicker.fileName} · {sheetPicker.sheetNames.length} Blätter gefunden</p>
-                        </div>
-                        <button onClick={()=>setSheetPicker(null)} className="text-xs text-slate-400 hover:text-red-400">Abbrechen</button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        {sheetPicker.sheetNames.map((name,i)=>(<button key={i} onClick={()=>processSheet(sheetPicker.wb,name,sheetPicker.fileName)} className="px-4 py-3 rounded-lg text-sm text-left border border-slate-700 hover:border-sky-500/50 hover:bg-sky-900/20 transition-all text-white">
-                            <span className="text-xs text-slate-500 mr-2">#{i+1}</span>{name}
-                        </button>))}
-                    </div>
-                </div>}
-
-                {/* Stat Cards */}
-                <div className="grid grid-cols-4 gap-3 mb-4">
-                    <StatCard label="Eingefügt" value={stats.eingefuegt} color="default"/>
-                    <StatCard label="Gefunden" value={stats.gefunden} color="green"/>
-                    <StatCard label="Mehrfach" value={stats.mehrfach} color="yellow"/>
-                    <StatCard label="Fehlt" value={stats.fehlt} color="red"/>
-                </div>
-
-                {/* Tabs */}
-                <div className="flex gap-2 mb-4 flex-wrap items-center">
-                    <TabBtn id="trefferliste" label="Trefferliste" icon="≡" badge={filtered.length}/>
-                    <TabBtn id="detail" label="Detail" icon="⇆"/>
-                    <TabBtn id="erledigt" label="Erledigt" icon="✓" badge={erledigte.length}/>
-                    <TabBtn id="excel" label="Excel-Vorschau" icon="⊞"/>
-                    <div className="ml-auto flex gap-2">
-                        <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} placeholder="Suche (ID, Name, Kommentar)..." className="px-3 py-1.5 rounded-lg text-xs bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 w-64"/>
-                    </div>
-                </div>
-
-                {/* ═══ TREFFERLISTE TAB ═══ */}
-                {activeTab==='trefferliste'&&<div className="glass-card rounded-xl overflow-hidden animate-fade-in" style={{maxHeight:'calc(100vh - 380px)',overflowY:'auto'}}>
-                    <table className="w-full text-sm">
-                        <thead><tr style={{borderBottom:'2px solid rgba(255,255,255,0.1)'}}>
-                            <th className="px-3 py-2.5 text-xs font-bold text-slate-400 text-left" style={{width:80}}>STATUS</th>
-                            <th className="px-3 py-2.5 text-xs font-bold text-slate-400 text-left" style={{width:90}}>LEAD ID</th>
-                            <th className="px-3 py-2.5 text-xs font-bold text-slate-400 text-left" style={{width:100}}>DATUM</th>
-                            <th className="px-3 py-2.5 text-xs font-bold text-slate-400 text-left">WAS IST PASSIERT?</th>
-                            <th className="px-3 py-2.5 text-xs font-bold text-slate-400 text-left" style={{width:110}}>NACHNAME</th>
-                            <th className="px-3 py-2.5 text-xs font-bold text-slate-400 text-left" style={{width:110}}>LEAD OWNER</th>
-                            <th className="px-3 py-2.5 text-xs font-bold text-slate-400 text-left" style={{width:90}}>ERGEBNIS</th>
-                            <th className="px-3 py-2.5 text-xs font-bold text-slate-400 text-left" style={{width:110}}>AGENT</th>
-                        </tr></thead>
-                        <tbody>
-                            {paginated.map(entry=>{
-                                const ex=entry.excelData&&entry.excelData[0];
-                                return(<tr key={entry.uid} className="hover:bg-slate-800/40 cursor-pointer transition-colors" style={{borderBottom:'1px solid rgba(255,255,255,0.04)',background:entry.matchStatus==='missing'?'rgba(239,68,68,0.03)':'transparent'}} onClick={()=>{setSelectedLead(entry);setActiveTab('detail')}}>
-                                    <td className="px-3 py-2"><StatusBadge status={entry.matchStatus}/></td>
-                                    <td className="px-3 py-2 text-white font-medium text-xs font-mono">{entry.leadId}</td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs">{entry.datum}</td>
-                                    <td className="px-3 py-2 text-slate-300 text-xs" style={{maxWidth:400,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={entry.kommentar}>{entry.kommentar}</td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs">{ex?ex.nachname:'-'}</td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs">{ex?ex.leadOwner:'-'}</td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs">{ex?ex.ergebnis:'-'}</td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs">{ex?ex.agent:'-'}</td>
-                                </tr>);
-                            })}
-                            {paginated.length===0&&<tr><td colSpan={8} className="px-3 py-10 text-center text-slate-500 text-sm">{entries.length===0?'Noch keine Einträge. Bitte gelbe Liste einfügen und Excel-Referenz laden.':'Keine Treffer für diese Suche.'}</td></tr>}
-                        </tbody>
-                    </table>
-                </div>}
-
-                {/* ═══ DETAIL TAB ═══ */}
-                {activeTab==='detail'&&<div className="animate-fade-in">
-                    {selectedLead?(<div>
-                        <div className="glass-card rounded-xl p-4 mb-3">
-                            <div className="flex justify-between items-start mb-3">
-                                <div>
-                                    <div className="text-xs text-sky-400 font-bold mb-1">LEAD-DETAIL</div>
-                                    <div className="text-lg font-bold text-white">Lead {selectedLead.leadId}</div>
-                                </div>
-                                <div className="flex gap-2 items-center">
-                                    <span className="px-2 py-1 rounded text-xs bg-slate-800 text-slate-300 border border-slate-700">Gelbe Liste: {selectedLead.datum||'-'}</span>
-                                    <span className="px-2 py-1 rounded text-xs bg-slate-800 text-slate-300 border border-slate-700">{selectedLead.matchStatus==='found'?'In Excel gefunden':'Nicht in Excel gefunden'}</span>
-                                    <button onClick={()=>toggleErledigt(selectedLead.uid)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-bold" style={{background:selectedLead.status==='Erledigt'?'linear-gradient(135deg,#f59e0b,#d97706)':'linear-gradient(135deg,#10b981,#059669)',color:'#fff'}}>{selectedLead.status==='Erledigt'?'↩ Zurücksetzen':'✓ Erledigt setzen'}</button>
-                                </div>
-                            </div>
-                            <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-3 mb-3">
-                                <div className="text-xs text-slate-500 mb-1">Was ist passiert? (Gelbe Liste)</div>
-                                <div className="text-sm text-white">{selectedLead.kommentar||'-'}</div>
-                            </div>
-                        </div>
-                        {/* Excel Data - Lead Info Card */}
-                        {selectedLead.excelData?(<div className="glass-card rounded-xl p-4">
-                            <div className="text-xs text-sky-400 font-bold mb-3">📊 EXCEL-DATEN</div>
-                            <div className="grid grid-cols-3 gap-3">
-                                {[
-                                    {label:'Nachname',val:selectedLead.excelData[0].nachname},
-                                    {label:'Lead Owner',val:selectedLead.excelData[0].leadOwner},
-                                    {label:'Agent',val:selectedLead.excelData[0].agent},
-                                    {label:'Ergebniscode',val:selectedLead.excelData[0].ergebnis},
-                                    {label:'Ergebnis Beschreibung',val:selectedLead.excelData[0].ergebnisBeschr},
-                                    {label:'Status',val:selectedLead.excelData[0].status},
-                                    {label:'Anrufversuche',val:selectedLead.excelData[0].anrufversuche},
-                                    {label:'Erster Nettokontakt',val:selectedLead.excelData[0].ersterNetto},
-                                    {label:'Import Zeitpunkt',val:selectedLead.excelData[0].importZeitpunkt},
-                                    {label:'Erstellungs-Datum',val:selectedLead.excelData[0].erstellDatum},
-                                    {label:'Erstellungs-Zeitpunkt',val:selectedLead.excelData[0].erstellZeitpunkt},
-                                    {label:'Aufmaßtermin',val:selectedLead.excelData[0].aufmasstermin},
-                                    {label:'Globaler Termin',val:selectedLead.excelData[0].globalTermin},
-                                    {label:'Lead Quelle',val:selectedLead.excelData[0].leadQuelle},
-                                    {label:'Lead Email',val:selectedLead.excelData[0].leadEmail},
-                                    {label:'Kampagne',val:selectedLead.excelData[0].kampagne},
-                                    {label:'Lead Owner ID',val:selectedLead.excelData[0].leadOwnerId},
-                                    {label:'Link LM',val:selectedLead.excelData[0].linkLM},
-                                ].filter(f=>f.val&&f.val!=='-').map((f,i)=>(<div key={i} className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-2.5">
-                                    <div className="text-xs text-slate-500 mb-0.5">{f.label}</div>
-                                    <div className="text-sm text-white break-words">{f.label==='Link LM'&&f.val.startsWith('http')?<a href={f.val} target="_blank" rel="noopener" className="text-sky-400 hover:underline">{f.val}</a>:f.val}</div>
-                                </div>))}
-                            </div>
-                            {selectedLead.excelData[0].kommentar&&selectedLead.excelData[0].kommentar!=='-'&&<div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-3 mt-3">
-                                <div className="text-xs text-slate-500 mb-1">Ergebniscode Bemerkung (Excel)</div>
-                                <div className="text-sm text-white">{selectedLead.excelData[0].kommentar}</div>
-                            </div>}
-                        </div>):(<div className="glass-card rounded-xl p-8 text-center" style={{background:'rgba(234,179,8,0.03)',border:'1px solid rgba(234,179,8,0.15)'}}>
-                            <div className="text-amber-400 text-sm">Diese Lead-ID wurde in der verbundenen Excel-Liste nicht gefunden.</div>
-                        </div>)}
-                        {/* Navigation */}
-                        <div className="flex gap-2 mt-3">
-                            {(()=>{const idx=filtered.findIndex(e=>e.uid===selectedLead.uid);const prev=idx>0?filtered[idx-1]:null;const next=idx<filtered.length-1?filtered[idx+1]:null;return(<>
-                                {prev&&<button onClick={()=>setSelectedLead(prev)} className="px-3 py-1.5 rounded-lg text-xs bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700">← Vorheriger (Lead {prev.leadId})</button>}
-                                {next&&<button onClick={()=>setSelectedLead(next)} className="px-3 py-1.5 rounded-lg text-xs bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700">Nächster (Lead {next.leadId}) →</button>}
-                            </>)})()}
-                            <button onClick={()=>deleteEntry(selectedLead.uid)} className="ml-auto px-3 py-1.5 rounded-lg text-xs bg-red-900/30 text-red-300 border border-red-500/30 hover:bg-red-900/50">Löschen</button>
-                        </div>
-                    </div>):(<div className="glass-card rounded-xl p-10 text-center">
-                        <div className="text-3xl mb-2">📄</div>
-                        <div className="text-slate-400 text-sm">Klicke auf einen Eintrag in der Trefferliste, um Details zu sehen.</div>
-                    </div>)}
-                </div>}
-
-                {/* ═══ ERLEDIGT TAB ═══ */}
-                {activeTab==='erledigt'&&<div className="animate-fade-in">
-                    <div className="glass-card rounded-xl p-3 mb-3">
-                        <div className="text-xs text-sky-400 font-bold mb-1">ABGESCHLOSSEN</div>
-                        <div className="text-lg font-bold text-white">Erledigte Leads</div>
-                    </div>
-                    <div className="glass-card rounded-xl overflow-hidden" style={{maxHeight:'calc(100vh - 400px)',overflowY:'auto'}}>
-                        <table className="w-full text-sm">
-                            <thead><tr style={{borderBottom:'2px solid rgba(255,255,255,0.1)'}}>
-                                <th className="px-3 py-2.5 text-xs font-bold text-emerald-400 text-left" style={{background:'rgba(16,185,129,0.08)'}}>ERLEDIGT AM</th>
-                                <th className="px-3 py-2.5 text-xs font-bold text-emerald-400 text-left" style={{background:'rgba(16,185,129,0.08)'}}>LEAD ID</th>
-                                <th className="px-3 py-2.5 text-xs font-bold text-emerald-400 text-left" style={{background:'rgba(16,185,129,0.08)'}}>DATUM</th>
-                                <th className="px-3 py-2.5 text-xs font-bold text-emerald-400 text-left" style={{background:'rgba(16,185,129,0.08)'}}>WAS IST PASSIERT?</th>
-                                <th className="px-3 py-2.5 text-xs font-bold text-emerald-400 text-left" style={{background:'rgba(16,185,129,0.08)'}}>NACHNAME</th>
-                                <th className="px-3 py-2.5 text-xs font-bold text-emerald-400 text-left" style={{background:'rgba(16,185,129,0.08)'}}>LEAD OWNER</th>
-                                <th className="px-3 py-2.5 text-xs font-bold text-emerald-400 text-left" style={{background:'rgba(16,185,129,0.08)'}}>ERGEBNIS</th>
-                                <th className="px-3 py-2.5 text-xs font-bold text-emerald-400 text-left" style={{background:'rgba(16,185,129,0.08)'}}>AGENT</th>
-                                <th className="px-3 py-2.5 text-xs font-bold text-emerald-400 text-center" style={{background:'rgba(16,185,129,0.08)'}}>AKTION</th>
-                            </tr></thead>
-                            <tbody>
-                                {erledigte.map(entry=>{const ex=entry.excelData&&entry.excelData[0];return(<tr key={entry.uid} style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}} className="hover:bg-slate-800/30">
-                                    <td className="px-3 py-2 text-emerald-400 text-xs font-medium">{entry.erledigtAm||'-'}</td>
-                                    <td className="px-3 py-2 text-white text-xs font-mono">{entry.leadId}</td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs">{entry.datum}</td>
-                                    <td className="px-3 py-2 text-slate-300 text-xs" style={{maxWidth:300,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{entry.kommentar}</td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs">{ex?ex.nachname:'-'}</td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs">{ex?ex.leadOwner:'-'}</td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs">{ex?ex.ergebnis:'-'}</td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs">{ex?ex.agent:'-'}</td>
-                                    <td className="px-3 py-2 text-center"><button onClick={()=>toggleErledigt(entry.uid)} className="px-2 py-0.5 rounded text-xs font-medium bg-amber-900/30 text-amber-300 hover:bg-amber-900/50">↩ Zurücksetzen</button></td>
-                                </tr>)})}
-                                {erledigte.length===0&&<tr><td colSpan={9} className="px-3 py-10 text-center text-slate-500 text-sm">Noch keine Leads erledigt gesetzt.</td></tr>}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>}
-
-                {/* ═══ EXCEL-VORSCHAU TAB ═══ */}
-                {activeTab==='excel'&&<div className="animate-fade-in">
-                    {excelRef?(<div>
-                        <div className="glass-card rounded-xl p-3 mb-3">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <div className="text-xs text-sky-400 font-bold mb-1">EXCEL-REFERENZ</div>
-                                    <div className="text-sm text-white">{excelRef.fileName} · Blatt: {excelRef.sheetName} · {excelRef.rows.length} Datensätze · Geladen: {excelRef.loadedAt}</div>
-                                </div>
-                                <button onClick={()=>{setExcelRef(null);localStorage.removeItem('wvl-excel-ref');showNotification('Excel-Referenz entfernt')}} className="px-3 py-1.5 rounded-lg text-xs bg-red-900/30 text-red-300 border border-red-500/30 hover:bg-red-900/50">Referenz entfernen</button>
-                            </div>
-                        </div>
-                        <div className="glass-card rounded-xl overflow-hidden" style={{maxHeight:'calc(100vh - 400px)',overflowY:'auto'}}>
-                            <table className="w-full text-xs">
-                                <thead><tr style={{borderBottom:'2px solid rgba(255,255,255,0.1)'}}>
-                                    {excelRef.raw[0]&&excelRef.raw[0].map((h,i)=><th key={i} className="px-2 py-2 text-xs font-bold text-slate-400 text-left bg-slate-800/50" style={{whiteSpace:'nowrap'}}>{String(h)}</th>)}
-                                </tr></thead>
-                                <tbody>
-                                    {excelRef.raw.slice(1,101).map((row,ri)=><tr key={ri} style={{borderBottom:'1px solid rgba(255,255,255,0.03)'}} className="hover:bg-slate-800/30">
-                                        {row.map((cell,ci)=><td key={ci} className="px-2 py-1 text-slate-400" style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={String(cell)}>{String(cell)}</td>)}
-                                    </tr>)}
-                                </tbody>
-                            </table>
-                            {excelRef.raw.length>101&&<div className="px-3 py-2 text-xs text-slate-500 text-center" style={{borderTop:'1px solid rgba(255,255,255,0.06)'}}>Zeige erste 100 von {excelRef.raw.length-1} Zeilen</div>}
-                        </div>
-                    </div>):(<div className="glass-card rounded-xl p-10 text-center">
-                        <div className="text-3xl mb-2">📊</div>
-                        <div className="text-slate-400 text-sm mb-3">Keine Excel-Referenz geladen.</div>
-                        <button onClick={()=>excelFileRef.current?.click()} className="px-4 py-2 rounded-lg text-sm font-bold" style={{background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#fff'}}>Excel-Referenz laden</button>
-                    </div>)}
-                </div>}
-
-                {/* Pagination (for Trefferliste) */}
-                {activeTab==='trefferliste'&&totalPages>1&&<div className="flex items-center justify-center gap-1 mt-3">
-                    <button onClick={()=>setPage(1)} disabled={page===1} className="px-2 py-1 rounded text-xs text-slate-400 hover:text-white disabled:opacity-30">« Erste</button>
-                    <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} className="px-2 py-1 rounded text-xs text-slate-400 hover:text-white disabled:opacity-30">‹ Zurück</button>
-                    {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
-                        let p=page<=3?i+1:page>=totalPages-2?totalPages-4+i:page-2+i;
-                        if(p<1||p>totalPages)return null;
-                        return <button key={p} onClick={()=>setPage(p)} className={`w-7 h-7 rounded text-xs font-medium ${p===page?'bg-sky-500 text-white':'text-slate-400 hover:text-white hover:bg-white/5'}`}>{p}</button>
-                    })}
-                    <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} className="px-2 py-1 rounded text-xs text-slate-400 hover:text-white disabled:opacity-30">Weiter ›</button>
-                    <button onClick={()=>setPage(totalPages)} disabled={page===totalPages} className="px-2 py-1 rounded text-xs text-slate-400 hover:text-white disabled:opacity-30">Letzte »</button>
-                    <span className="text-xs text-slate-500 ml-2">{filtered.length} Datensätze (Seite {page} von {totalPages})</span>
-                </div>}
             </div>)
         }
 
