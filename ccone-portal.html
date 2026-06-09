@@ -301,7 +301,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.6.0';
+        const APP_VERSION = '6.6.1';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14317,6 +14317,8 @@ Regeln:
             const dashImgShownRef=useRef({});
             const dashImgBusyRef=useRef(false);
             const dashImgRef=useRef(null); // mirrors dashImg for use in polling closure
+            const ivRef=useRef(null); // aktueller Poll-Interval-Handle (adaptiv)
+            const curIntervalRef=useRef(60000); // aktuelles Poll-Intervall (60s leer / 15s aktiv)
             useEffect(()=>{dashImgRef.current=dashImg},[dashImg]);
             const ANIMS_IN=['fadeIn','slideInLeft','slideInRight','slideInUp','slideInDown','zoomIn','bounceIn','rotateIn','flipInX','flipInY'];
             const ANIMS_OUT=['fadeOut','slideOutLeft','slideOutRight','slideOutUp','slideOutDown','zoomOut','bounceOut','rotateOut','flipOutX','flipOutY'];
@@ -14333,6 +14335,9 @@ Regeln:
                         const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.dashboardImageQueue&select=value',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
                         if(!r.ok)return;const d=await r.json();
                         var queue=d[0]?.value||[];
+                        // Adaptiv: leere Queue -> langsamer Takt (spart Disk IO + Egress wenn keine Bilder aktiv)
+                        var wantInterval=queue.length?15000:60000;
+                        if(wantInterval!==curIntervalRef.current){curIntervalRef.current=wantInterval;clearInterval(ivRef.current);ivRef.current=setInterval(poll,wantInterval);}
                         // === Live-Removal: aktuell angezeigtes Bild manuell aus Queue entfernt? ===
                         var current=dashImgRef.current;
                         if(current&&!queue.find(i=>i.id===current.id)){fadeOutCurrent();return}
@@ -14368,8 +14373,9 @@ Regeln:
                         },(next.duration||10)*1000)}
                     }catch(e){dashImgBusyRef.current=false}
                 };
-                poll();const iv=setInterval(poll,5000);
-                return()=>{clearInterval(iv);if(dashImgTimerRef.current)clearTimeout(dashImgTimerRef.current)};
+                curIntervalRef.current=60000;
+                poll();ivRef.current=setInterval(poll,60000);
+                return()=>{clearInterval(ivRef.current);if(dashImgTimerRef.current)clearTimeout(dashImgTimerRef.current)};
             },[mode]);
 
             const doVnrSync=()=>{
