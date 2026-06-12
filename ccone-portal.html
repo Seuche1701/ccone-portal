@@ -301,7 +301,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.6.3';
+        const APP_VERSION = '6.6.4';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -14258,10 +14258,17 @@ Regeln:
                     polls.push(setInterval(fetchSyncStatus,900000));
                     /* Monatsquoten laden (einmalig + alle 5 Min) */
                     const curMonat=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-                    const fetchMonat=async()=>{try{
-                        const r=await fetch(SUPABASE_URL+'/rest/v1/excel_monatsquoten?monat=eq.'+curMonat+'&select=name,standort,termin,no_success,termin_quote',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
-                        if(r.ok){const d=await r.json();setMonatsQuoten(d)}
-                    }catch(e){}};
+                    const fetchMonat=async()=>{
+                        try{
+                            const r=await fetch(SUPABASE_URL+'/rest/v1/excel_monatsquoten?monat=eq.'+curMonat+'&select=name,standort,termin,no_success,termin_quote',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                            if(r.ok){const d=await r.json();if(d&&d.length){setMonatsQuoten(d);return;}}
+                        }catch(e){}
+                        /* Supabase leer/Fehler -> lokaler Server */
+                        if(LOCAL_DASHBOARD_URL){try{
+                            const lr=await fetch(LOCAL_DASHBOARD_URL+'/api/monat',{cache:'no-store'});
+                            if(lr.ok){const ld=await lr.json();if(Array.isArray(ld))setMonatsQuoten(ld);}
+                        }catch(e){}}
+                    };
                     fetchMonat();polls.push(setInterval(fetchMonat,900000));
                     /* Fetch-Funktionen für manuelle Buttons speichern */
                     window._ekdRefresh=()=>{fetchEkd();fetchExcel();fetchSyncStatus();fetchMonat()};
