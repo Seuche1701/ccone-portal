@@ -301,7 +301,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.6.1';
+        const APP_VERSION = '6.6.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -319,6 +319,10 @@
         // ── Supabase Konfiguration ──
         const SUPABASE_URL = 'https://jblgpzqwjpjscmkfsupf.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_KC_Y-rjIkpa0CTvtGc4p8Q_MqHC7SpQ';
+        // === Lokaler Dashboard-Server (Fallback wenn Supabase nicht erreichbar) ===
+        // IP des PCs eintragen, auf dem local_dashboard_server.py läuft (zeigt der Server beim Start an).
+        // Beispiel: 'http://192.168.1.50:8000'. Leer lassen = kein Fallback.
+        const LOCAL_DASHBOARD_URL = localStorage.getItem('localDashboardUrl') || 'http://10.23.194.155:8000';
         let _sbClient=null;
         function loadSupabaseJs(){
             return new Promise((resolve,reject)=>{
@@ -14220,14 +14224,35 @@ Regeln:
                     fetchEkd();polls.push(setInterval(fetchEkd,60000));/* VIER alle 60 Sek */
                     /* Excel-Kennzahlen aus Supabase holen (nur heutiges Datum) */
                     const now=new Date();const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-                    const fetchExcel=async()=>{if(feierabendRef.current)return;try{
-                        const r=await fetch(SUPABASE_URL+'/rest/v1/excel_kennzahlen?datum=eq.'+today+'&select=name,standort,no_success,termin,termin_quote,updated_at',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
-                        if(r.ok){const d=await r.json();setExcelData(d);setExcelLastFetch(new Date().toISOString())}
-                    }catch(e){}};
-                    const fetchSyncStatus=async()=>{if(feierabendRef.current)return;try{
-                        const r=await fetch(SUPABASE_URL+'/rest/v1/sync_status?source=eq.sharepoint-excel&select=last_success,status,rows_synced',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
-                        if(r.ok){const d=await r.json();if(d[0])setExcelSyncStatus(d[0])}
-                    }catch(e){}};
+                    /* Lokaler Fallback: holt excel+sync in einem Call, gecacht für 5s */
+                    let _localCache={ts:0,data:null};
+                    const fetchLocal=async()=>{
+                        if(!LOCAL_DASHBOARD_URL)return null;
+                        if(Date.now()-_localCache.ts<5000)return _localCache.data;
+                        try{
+                            const r=await fetch(LOCAL_DASHBOARD_URL+'/api/excel',{cache:'no-store'});
+                            if(!r.ok)return null;
+                            const d=await r.json();_localCache={ts:Date.now(),data:d};return d;
+                        }catch(e){return null;}
+                    };
+                    const fetchExcel=async()=>{if(feierabendRef.current)return;
+                        try{
+                            const r=await fetch(SUPABASE_URL+'/rest/v1/excel_kennzahlen?datum=eq.'+today+'&select=name,standort,no_success,termin,termin_quote,updated_at',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                            if(r.ok){const d=await r.json();if(d&&d.length){setExcelData(d);setExcelLastFetch(new Date().toISOString());return;}}
+                        }catch(e){}
+                        /* Supabase leer/Fehler -> lokaler Server */
+                        const loc=await fetchLocal();
+                        if(loc&&loc.excel){setExcelData(loc.excel);setExcelLastFetch(new Date().toISOString());}
+                    };
+                    const fetchSyncStatus=async()=>{if(feierabendRef.current)return;
+                        try{
+                            const r=await fetch(SUPABASE_URL+'/rest/v1/sync_status?source=eq.sharepoint-excel&select=last_success,status,rows_synced',{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}});
+                            if(r.ok){const d=await r.json();if(d&&d[0]){setExcelSyncStatus(d[0]);return;}}
+                        }catch(e){}
+                        /* Supabase leer/Fehler -> lokaler Server */
+                        const loc=await fetchLocal();
+                        if(loc&&loc.sync){setExcelSyncStatus(loc.sync);}
+                    };
                     fetchExcel();fetchSyncStatus();
                     polls.push(setInterval(fetchExcel,900000));/* Excel alle 15 Min */
                     polls.push(setInterval(fetchSyncStatus,900000));
