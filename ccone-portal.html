@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.6.5';
+        const APP_VERSION = '6.6.6';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -603,6 +603,25 @@
                     data = await response.json();
                 }
                 if (data && mode !== 'offline') _offlineSave(data);
+                // Memory-Bilder separat nachladen (großer Key, nicht im Haupt-Sync)
+                // und in die Memory-Karten zurückmischen.
+                if (data && data.quizzes && Array.isArray(data.quizzes)) {
+                    const hasMemory = data.quizzes.some(q=>q.type==='memory'&&q.memoryCards&&q.memoryCards.length);
+                    if (hasMemory) {
+                        try {
+                            const mr = await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.memoryImages&select=value',{headers:_sbHeaders()});
+                            if (mr.ok) {
+                                const rows = await mr.json();
+                                const mi = (rows && rows[0] && rows[0].value) ? rows[0].value : {};
+                                data.quizzes.forEach(q=>{
+                                    if(q.type==='memory'&&q.memoryCards){
+                                        q.memoryCards.forEach(c=>{ if(!c.image&&mi[c.id]) c.image=mi[c.id]; });
+                                    }
+                                });
+                            }
+                        } catch(e){ console.warn('memoryImages laden fehlgeschlagen:', e.message); }
+                    }
+                }
                 return data;
             },
             async saveData(data) {
@@ -769,26 +788,22 @@
                 if(!r.ok) throw new Error('Supabase savePokerGames HTTP '+r.status);
             },
             async saveMemoryImages(imageMap) {
-                if (!GOOGLE_SCRIPT_URL) throw new Error('Keine URL');
-                // Use iframe/form for large base64 image data (no-cors fetch drops body on redirect)
-                return new Promise((resolve,reject)=>{
-                    const frameName='mem_img_frame_'+Date.now();
-                    const frame=document.createElement('iframe');
-                    frame.name=frameName;
-                    frame.style.display='none';
-                    document.body.appendChild(frame);
-                    const form=document.createElement('form');
-                    form.method='POST';
-                    form.action=GOOGLE_SCRIPT_URL;
-                    form.target=frameName;
-                    const input=document.createElement('textarea');
-                    input.name='data';
-                    input.value=JSON.stringify({action:'saveMemoryImages',data:imageMap});
-                    form.appendChild(input);
-                    document.body.appendChild(form);
-                    frame.onload=()=>{setTimeout(()=>{try{document.body.removeChild(frame);document.body.removeChild(form)}catch(e){}resolve({success:true})},1000)};
-                    form.submit();
+                // Memory-Bilder als eigener Key 'memoryImages' in der DB (über den
+                // fetch-Übersetzer landet das in PocketBase). Vorher gemergt, damit
+                // bestehende Bilder anderer Quizze nicht verloren gehen.
+                let existing = {};
+                try {
+                    const gr = await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.memoryImages&select=value',{headers:_sbHeaders()});
+                    if(gr.ok){ const rows = await gr.json(); if(rows && rows[0] && rows[0].value) existing = rows[0].value; }
+                } catch(e){ /* erster Lauf: noch kein Key vorhanden */ }
+                const merged = {...existing, ...imageMap};
+                const r = await fetch(SUPABASE_URL+'/rest/v1/ccone_data?on_conflict=key',{
+                    method:'POST',
+                    headers:{..._sbHeaders(),'Prefer':'resolution=merge-duplicates,return=minimal'},
+                    body:JSON.stringify({key:'memoryImages',value:merged})
                 });
+                if(!r.ok) throw new Error('saveMemoryImages HTTP '+r.status);
+                return {success:true};
             },
             async uploadMemoryImages(imageCards) {
                 if (!GOOGLE_SCRIPT_URL) throw new Error('Keine URL');
