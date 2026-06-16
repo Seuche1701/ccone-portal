@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.6.8';
+        const APP_VERSION = '6.6.9';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -7157,8 +7157,15 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                     if(!file.type.startsWith('image/'))continue;
                     try{
                         const compressedImage=await compressImage(file);
-                        let label=file.name.replace(/\.[^/.]+$/,'').replace(/[-_]+/g,' ').replace(/\s+/g,' ').trim();
-                        label=label.charAt(0).toUpperCase()+label.slice(1);
+                        // Label aus Dateiname ableiten und bereinigen:
+                        // Datum/Zeit vorne weg, 'simple compose'+ID hinten weg.
+                        let label=file.name.replace(/\.[^/.]+$/,'').replace(/[-_]+/g,' ');
+                        label=label.replace(/^\s*\d{6,8}\s+\d{3,4}\s+/,'');     // führendes Datum + Zeit
+                        label=label.replace(/\s+simple\s+compose.*$/i,'');       // 'simple compose ...'
+                        label=label.replace(/\s+simple.*$/i,'');                 // Rest 'simple ...'
+                        label=label.replace(/\s+0[a-z0-9]{15,}.*$/i,'');         // lange ID-Kette
+                        label=label.replace(/\s+/g,' ').trim();
+                        if(label) label=label.charAt(0).toUpperCase()+label.slice(1);
                         newPending.push({id:Date.now().toString()+Math.random(),image:compressedImage,label,fileName:file.name});
                     }catch(err){console.error(err)}
                 }
@@ -13179,9 +13186,12 @@ Regeln:
             
             const checkPairAnswer=()=>{
                 if(!pairInput.trim())return;
-                const correct=pendingPair.label.toLowerCase().trim();
-                const answer=pairInput.toLowerCase().trim();
-                const isCorrect=correct===answer||correct.includes(answer)||answer.includes(correct);
+                // Vergleich nur exakt (Groß/Kleinschreibung und Leerzeichen-Ränder egal).
+                // Mehrere erlaubte Begriffe können per | getrennt im Label stehen.
+                const norm=(s)=>s.toLowerCase().trim().replace(/\s+/g,' ');
+                const answer=norm(pairInput);
+                const accepted=norm(pendingPair.label).split('|').map(x=>x.trim()).filter(Boolean);
+                const isCorrect=accepted.includes(answer);
                 
                 if(isCorrect){
                     // Richtig! Paar als gefunden markieren
