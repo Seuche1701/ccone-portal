@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.6.6';
+        const APP_VERSION = '6.6.7';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -7099,6 +7099,31 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
             const fileInputRef=useRef(null);
             const[pendingImages,setPendingImages]=useState([]);
             const[saving,setSaving]=useState(false);
+
+            // Bilder gehören nicht ins Quiz-Objekt (zu groß), sondern liegen separat
+            // unter dem Key 'memoryImages'. Beim Öffnen des Editors nachladen und
+            // anhand der Karten-ID wieder zuordnen.
+            useEffect(()=>{
+                const cards=editingQuiz.memoryCards||[];
+                const missing=cards.some(c=>!c.image);
+                if(!missing) return;
+                let cancelled=false;
+                (async()=>{
+                    try{
+                        const r=await fetch(SUPABASE_URL+'/rest/v1/ccone_data?key=eq.memoryImages&select=value',{headers:_sbHeaders()});
+                        if(!r.ok) return;
+                        const rows=await r.json();
+                        const mi=(rows&&rows[0]&&rows[0].value)?rows[0].value:{};
+                        if(cancelled) return;
+                        setEditingQuiz(prev=>({
+                            ...prev,
+                            memoryCards:(prev.memoryCards||[]).map(c=>(!c.image&&mi[c.id])?{...c,image:mi[c.id]}:c)
+                        }));
+                    }catch(e){ console.warn('Memory-Bilder nachladen fehlgeschlagen:',e.message); }
+                })();
+                return ()=>{cancelled=true;};
+            // eslint-disable-next-line
+            },[]);
             
             const compressImage=(file,maxWidth=150,quality=0.4)=>{
                 return new Promise((resolve)=>{
