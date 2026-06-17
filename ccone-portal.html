@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.7.0';
+        const APP_VERSION = '6.7.1';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -5421,6 +5421,84 @@ function getOrCreateSheet(){
                         strict:"Sei EXTREM STRENG. Nur PERFEKTE und VOLLSTÄNDIGE Umsetzung = erfüllt. Kurze Erwähnungen = NICHT erfüllt."
                     };
                     
+                    // EKD nutzt 27 Einzelkriterien mit 5-Stufen-Status statt Phasen-ja/nein
+                    const isCriteriaMode=checklist.some(it=>it.criteria&&it.criteria.length>0);
+
+                    if(isCriteriaMode){
+                        // Alle Kriterien flach auflisten (mit Kategorie-Zuordnung)
+                        const allCrit=[];
+                        checklist.forEach((item)=>{
+                            (item.criteria||[]).forEach(c=>{
+                                allCrit.push(`Nr ${c.nr} [${item.name}]: ${c.name} — ${c.desc}`);
+                            });
+                        });
+                        const critPrompt=`Du bist ein Coaching-Experte für EKD Photovoltaik-Verkaufsgespräche (Energiekonzepte Deutschland).
+
+STRENGE: ${(checklistSeverity||'normal').toUpperCase()}
+ANWEISUNG: ${severityInstructions[checklistSeverity||'normal']}
+
+Bewerte JEDES der folgenden Kriterien anhand des Transkripts. Status-Optionen:
+- "erfuellt": vollständig und korrekt umgesetzt
+- "teilweise": ansatzweise, aber nicht vollständig
+- "nicht": nicht erfüllt, obwohl es nötig gewesen wäre
+- "fail": grober Fehler / negativ aufgefallen
+- "na": im Gespräch nicht anwendbar (z.B. kein Take, kein Einwand)
+
+KRITERIEN:
+${allCrit.join('\\n')}
+
+TRANSKRIPT:
+${transcript}
+
+Antworte NUR mit JSON:
+{
+  "criteria": [
+    {"nr": 1, "status": "erfuellt", "note": "Kurze Begründung (max 90 Zeichen)"}
+  ],
+  "suggestedTasks": ["Aufgabe 1", "bis zu 5 Aufgaben"],
+  "suggestedStrengths": ["Stärke als ganzer Satz", "bis zu 5"],
+  "suggestedDevAreas": ["Entwicklungsfeld als ganzer Satz", "bis zu 5"],
+  "suggestedAgreements": "Vereinbarungen als Fließtext (2-3 Sätze)"
+}`;
+                        const cr=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+                            method:'POST',
+                            headers:{'Authorization':`Bearer ${groqKey}`,'Content-Type':'application/json'},
+                            body:JSON.stringify({
+                                model:'llama-3.3-70b-versatile',
+                                messages:[{role:'user',content:critPrompt}],
+                                temperature:0.0,
+                                max_tokens:4000,
+                                response_format:{type:'json_object'}
+                            })
+                        });
+                        if(cr.ok){
+                            const cdata=await cr.json();
+                            const cres=JSON.parse(cdata.choices[0].message.content);
+                            if(cres.criteria){
+                                const statusMap={};
+                                cres.criteria.forEach(c=>{statusMap[c.nr]={status:c.status,note:c.note};});
+                                const validStatus=['erfuellt','teilweise','nicht','fail','na'];
+                                const updated=checklist.map(item=>{
+                                    if(!item.criteria) return item;
+                                    return {...item,criteria:item.criteria.map(c=>{
+                                        const m=statusMap[c.nr];
+                                        if(!m||!validStatus.includes(m.status)) return c;
+                                        return {...c,status:m.status,aiNote:m.note||''};
+                                    })};
+                                });
+                                setChecklist(updated);
+                                const okCount=updated.reduce((s,i)=>s+(i.criteria||[]).filter(c=>c.status==='erfuellt').length,0);
+                                showNotification(`🤖 KI-Vorbewertung: ${okCount}/27 Kriterien erfüllt – jetzt feinjustieren`);
+                                if(cres.suggestedTasks?.length) setReportTasks(cres.suggestedTasks.slice(0,5));
+                                if(cres.suggestedStrengths?.length) setReportStrengths(cres.suggestedStrengths.slice(0,5));
+                                if(cres.suggestedDevAreas?.length) setReportDevAreas(cres.suggestedDevAreas.slice(0,5));
+                                if(cres.suggestedAgreements) setReportAgreements(cres.suggestedAgreements);
+                            }
+                        }
+                        setGenerating(false);
+                        return;
+                    }
+
                     const phasesInfo=checklist.map((item,idx)=>{
                         const kws=item.keywords||[];
                         return `${idx}. ${item.name}\n   Keywords: ${kws.join(', ')}\n   Beispiel: ${item.example||'N/A'}`;
