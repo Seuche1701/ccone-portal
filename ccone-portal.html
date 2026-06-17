@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.7.1';
+        const APP_VERSION = '6.7.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -5326,12 +5326,55 @@ function getOrCreateSheet(){
                 });
             };
             
-            // Berechne Score (übersprungene Phasen werden nicht mitgezählt)
+            // Punktwert eines Kriterium-Status (Anteil 0..1)
+            const CRIT_SCORE={erfuellt:1, teilweise:0.5, nicht:0, fail:0, na:null};
+
+            // Score einer einzelnen Kachel im Kriterien-Modus (0..1) + ob sie zählt.
+            // 'na'-Kriterien werden komplett rausgerechnet.
+            const categoryCriteriaScore=(item)=>{
+                const crits=item.criteria||[];
+                const counting=crits.filter(c=>CRIT_SCORE[c.status||'erfuellt']!==null);
+                if(counting.length===0) return {ratio:null}; // ganze Kategorie n/a
+                const sum=counting.reduce((s,c)=>s+CRIT_SCORE[c.status||'erfuellt'],0);
+                return {ratio:sum/counting.length};
+            };
+
+            // Berechne Score. EKD: gewichteter Schnitt über die 27 Kriterien.
+            // Sonst: alte Phasen-Logik (item.checked).
             const calculateChecklistScore=()=>{
+                const isCriteriaMode=checklist.some(it=>it.criteria&&it.criteria.length>0);
+                if(isCriteriaMode){
+                    let totalWeight=0, achieved=0;
+                    checklist.forEach(item=>{
+                        if(item.skipped) return;
+                        const {ratio}=categoryCriteriaScore(item);
+                        if(ratio===null) return; // Kategorie komplett n/a -> nicht werten
+                        totalWeight+=item.weight;
+                        achieved+=item.weight*ratio;
+                    });
+                    return totalWeight>0?(achieved/totalWeight*100):0;
+                }
                 const active=checklist.filter(item=>!item.skipped);
                 const totalWeight=active.reduce((sum,item)=>sum+item.weight,0);
                 const achievedWeight=active.reduce((sum,item)=>sum+(item.checked?item.weight:0),0);
                 return totalWeight>0?(achievedWeight/totalWeight*100):0;
+            };
+
+            // Zähler für die Anzeige: erfüllte vs. zählende Kriterien (EKD) bzw. Phasen.
+            const criteriaCounts=()=>{
+                const isCriteriaMode=checklist.some(it=>it.criteria&&it.criteria.length>0);
+                if(!isCriteriaMode) return null;
+                let total=0, ok=0;
+                checklist.forEach(item=>{
+                    if(item.skipped) return;
+                    (item.criteria||[]).forEach(c=>{
+                        const st=c.status||'erfuellt';
+                        if(CRIT_SCORE[st]===null) return; // n/a
+                        total++;
+                        if(st==='erfuellt') ok++;
+                    });
+                });
+                return {ok,total};
             };
             
             
@@ -6180,7 +6223,7 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                             <h2 style={{color:"white",fontSize:"1.5rem",fontWeight:"bold"}}>📋 Live Gesprächs-Checkliste</h2>
                             <div style={{textAlign:"right"}}>
                                 <div style={{fontSize:"1.5rem",fontWeight:"bold",color:"#34d399"}}>{calculateChecklistScore().toFixed(0)}%</div>
-                                <div style={{fontSize:"0.75rem",color:"#94a3b8"}}>{checklist.filter(i=>i.checked&&!i.skipped).length}/{checklist.filter(i=>!i.skipped).length} Phasen{checklist.filter(i=>i.skipped).length>0?` (${checklist.filter(i=>i.skipped).length} übersprungen)`:''}</div>
+                                <div style={{fontSize:"0.75rem",color:"#94a3b8"}}>{(()=>{const cc=criteriaCounts();return cc?`${cc.ok}/${cc.total} Kriterien`:`${checklist.filter(i=>i.checked&&!i.skipped).length}/${checklist.filter(i=>!i.skipped).length} Phasen${checklist.filter(i=>i.skipped).length>0?` (${checklist.filter(i=>i.skipped).length} übersprungen)`:''}`;})()}</div>
                             </div>
                         </div>
                         
@@ -6189,8 +6232,8 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                                 <div style={{background:"linear-gradient(to right,#10b981,#3b82f6)",height:"12px",borderRadius:"9999px",width:`${calculateChecklistScore()}%`,transition:"all 0.3s"}}/>
                             </div>
                             <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.75rem",color:"#94a3b8",marginTop:"0.25rem"}}>
-                                <span>{checklist.filter(i=>i.checked&&!i.skipped).length} / {checklist.filter(i=>!i.skipped).length} Phasen</span>
-                                <span>{checklist.filter(i=>!i.skipped).reduce((s,i)=>s+(i.checked?i.weight:0),0)} / {checklist.filter(i=>!i.skipped).reduce((s,i)=>s+i.weight,0)} Punkte</span>
+                                <span>{(()=>{const cc=criteriaCounts();return cc?`${cc.ok} / ${cc.total} Kriterien`:`${checklist.filter(i=>i.checked&&!i.skipped).length} / ${checklist.filter(i=>!i.skipped).length} Phasen`;})()}</span>
+                                <span>{Math.round(calculateChecklistScore())} / 100 Punkte</span>
                             </div>
                         </div>
                         
