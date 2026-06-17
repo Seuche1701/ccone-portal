@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.7.4';
+        const APP_VERSION = '6.7.5';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -1884,8 +1884,26 @@ function getOrCreateSheet(){
                     const words=Array.isArray(result.words)?result.words:null;
                     console.log('[Karaoke] Groq-Antwort: '+(words?words.length+' Wort-Zeitstempel erhalten':'KEINE Wort-Zeitstempel (words fehlt in Antwort)'));
                     const audioUrl=URL.createObjectURL(audioFile);
+                    // Voicefile-Infos aus dem Dateinamen lesen:
+                    // LeadID_Datum(TTMMJJ)_Uhrzeit(HHMM)_NameProjekt_langeZahl
+                    let fileInfo=null;
+                    try{
+                        const base=(audioFile.name||'').replace(/\.[^/.]+$/,'');
+                        const p=base.split('_');
+                        if(p.length>=4){
+                            const leadId=p[0];
+                            const d=p[1]||'', z=p[2]||'';
+                            const datum=(d.length===6)?`${d.slice(0,2)}.${d.slice(2,4)}.${d.slice(4,6)}`:d;
+                            const zeit=(z.length===4)?`${z.slice(0,2)}:${z.slice(2,4)}`:z;
+                            const nameRaw=p[3]||'';
+                            const projMatch=nameRaw.match(/(EKD|VNR|DAM|SAP)$/);
+                            const projekt=projMatch?projMatch[1]:'';
+                            const name=nameRaw.replace(/(EKD|VNR|DAM|SAP)$/,'').replace(/([a-z])([A-Z])/g,'$1 $2').trim();
+                            fileInfo={leadId,datum,zeit,name,projekt,fileName:audioFile.name};
+                        }
+                    }catch(e){console.warn('Dateiname-Parse fehlgeschlagen:',e.message);}
                     // Transkript global verfügbar machen für CoachingTab
-                    if(window._coachingSetTranscript)window._coachingSetTranscript(result.text,words,audioUrl);
+                    if(window._coachingSetTranscript)window._coachingSetTranscript(result.text,words,audioUrl,fileInfo);
                     showNotification('✅ Transkription fertig!');
                 }catch(err){showNotification(`Fehler: ${err.message}`,'error')}
                 finally{setIsTranscribing(false);setTimeout(()=>setTranscriptionProgress(0),2000)}
@@ -4826,6 +4844,8 @@ function getOrCreateSheet(){
             const[transcriptText,setTranscriptText]=useState('');
             const[transcriptWords,setTranscriptWords]=useState(null); // [{word,start,end},...]
             const[coachingAudioUrl,setCoachingAudioUrl]=useState(null);
+            const[voiceFileInfo,setVoiceFileInfo]=useState(null);
+            const[audioDuration,setAudioDuration]=useState(null);
             const[activeWordIdx,setActiveWordIdx]=useState(-1);
             const coachingAudioRef=React.useRef(null);
             const activeWordRef=React.useRef(null);
@@ -4886,11 +4906,12 @@ function getOrCreateSheet(){
             const autoCheckRef=React.useRef(null);
             // Hook für SidebarAudioPlayer: Transkript empfangen
             React.useEffect(()=>{
-                window._coachingSetTranscript=(transcript,words,audioUrl)=>{
+                window._coachingSetTranscript=(transcript,words,audioUrl,fileInfo)=>{
                     setForm(prev=>({...prev,notes:transcript}));
                     setTranscriptText(transcript);
                     setTranscriptWords(Array.isArray(words)&&words.length>0?words:null);
                     if(audioUrl) setCoachingAudioUrl(audioUrl);
+                    if(fileInfo) setVoiceFileInfo(fileInfo);
                     setActiveWordIdx(-1);
                     setShowChecklistPage(true);
                     setTimeout(()=>{
@@ -6275,7 +6296,7 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                             </div>
                         </div>
                         
-                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1.5rem"}}>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1.4fr",gap:"1.5rem"}}>
                             <div>
                                 <div style={{background:"rgba(126,34,206,0.2)",border:"1px solid rgba(126,34,206,0.4)",borderRadius:"1rem",padding:"1rem",marginBottom:"1rem"}}>
                                     <div style={{fontWeight:"600",color:"#d8b4fe",marginBottom:"0.5rem"}}>🤖 KI-Analyse</div>
@@ -6380,7 +6401,16 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                                 {/* AUDIO-PLAYER + KARAOKE-HIGHLIGHT (nur wenn Wort-Zeitstempel da sind) */}
                                 {coachingAudioUrl&&transcriptWords&&(
                                     <div style={{marginBottom:"1rem"}}>
-                                        <audio ref={coachingAudioRef} src={coachingAudioUrl} controls onTimeUpdate={updateActiveWord} style={{width:"100%",height:"36px",marginBottom:"0.5rem"}}/>
+                                        {/* Voicefile-Infos aus dem Dateinamen */}
+                                        {voiceFileInfo&&(
+                                            <div style={{display:"flex",flexWrap:"wrap",gap:"0.5rem",marginBottom:"0.6rem"}}>
+                                                {voiceFileInfo.name&&<span style={{background:"rgba(249,115,22,0.15)",color:"#fdba74",border:"1px solid #f97316",borderRadius:"9999px",padding:"3px 12px",fontSize:"0.8rem",fontWeight:"600"}}>👤 {voiceFileInfo.name}{voiceFileInfo.projekt?` · ${voiceFileInfo.projekt}`:''}</span>}
+                                                {voiceFileInfo.leadId&&<span style={{background:"rgba(59,130,246,0.15)",color:"#93c5fd",border:"1px solid #3b82f6",borderRadius:"9999px",padding:"3px 12px",fontSize:"0.8rem",fontWeight:"600"}}>🆔 Lead {voiceFileInfo.leadId}</span>}
+                                                {voiceFileInfo.datum&&<span style={{background:"rgba(16,185,129,0.15)",color:"#6ee7b7",border:"1px solid #10b981",borderRadius:"9999px",padding:"3px 12px",fontSize:"0.8rem",fontWeight:"600"}}>📅 {voiceFileInfo.datum}{voiceFileInfo.zeit?` ${voiceFileInfo.zeit}`:''}</span>}
+                                                {audioDuration&&<span style={{background:"rgba(148,163,184,0.15)",color:"#cbd5e1",border:"1px solid #64748b",borderRadius:"9999px",padding:"3px 12px",fontSize:"0.8rem",fontWeight:"600"}}>⏱️ {Math.floor(audioDuration/60)}:{String(Math.floor(audioDuration%60)).padStart(2,'0')} min</span>}
+                                            </div>
+                                        )}
+                                        <audio ref={coachingAudioRef} src={coachingAudioUrl} controls onTimeUpdate={updateActiveWord} onLoadedMetadata={e=>setAudioDuration(e.target.duration)} style={{width:"100%",height:"36px",marginBottom:"0.5rem"}}/>
                                         <div style={{
                                             maxHeight:"260px",overflowY:"auto",padding:"0.85rem",borderRadius:"0.75rem",
                                             border:"1px solid #475569",background:"rgba(15,23,42,0.6)",color:"#cbd5e1",
