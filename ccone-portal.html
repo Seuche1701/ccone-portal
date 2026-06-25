@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.7.8';
+        const APP_VERSION = '6.7.9';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -709,11 +709,19 @@
                             }catch(e){ return {data:null,error:{message:e.message}}; }
                         },
                         getPublicUrl(path){
-                            // Wir geben eine URL zurück, die über download aufgelöst wird.
-                            // Da PB-Dateinamen die Record-ID brauchen, liefern wir einen Marker,
-                            // der im Code via download() genutzt wird. Für direkte <img>-Nutzung
-                            // lösen wir synchron nicht auf -> leere publicUrl, Code nutzt download.
+                            // Synchron nicht auflösbar (PB braucht Record-ID). Marker zurückgeben;
+                            // die echte URL liefert getImageUrl() asynchron.
                             return {data:{publicUrl:`${PB}/_slide?path=`+encodeURIComponent(path)}};
+                        },
+                        // Echte PocketBase-Datei-URL (async): sucht den Record und baut die URL.
+                        async getImageUrl(path){
+                            try{
+                                const q=await fetch(`${PB}/api/collections/training_slides/records?filter=`+encodeURIComponent(`path="${path}"`)+'&perPage=1');
+                                if(!q.ok) return null;
+                                const rec=((await q.json()).items||[])[0];
+                                if(!rec||!rec.image) return null;
+                                return `${PB}/api/files/training_slides/${rec.id}/${rec.image}`;
+                            }catch(e){ return null; }
                         },
                         async remove(paths){
                             try{
@@ -15773,8 +15781,21 @@ function SlideImage({ supabase, presId, index, style, className, alt }) {
     setLoaded(false);
     setError(false);
     const pad = String(index).padStart(2, "0");
-    const { data } = supabase.storage.from("training-slides").getPublicUrl(`${presId}/slide-${pad}.jpg`);
-    setUrl(data.publicUrl);
+    const path = `${presId}/slide-${pad}.jpg`;
+    let cancelled = false;
+    (async () => {
+      const store = supabase.storage.from("training-slides");
+      // PocketBase-Adapter: echte Datei-URL async holen
+      if (typeof store.getImageUrl === "function") {
+        const u = await store.getImageUrl(path);
+        if (!cancelled) { if (u) setUrl(u); else setError(true); }
+      } else {
+        // Supabase-Fallback
+        const { data } = store.getPublicUrl(path);
+        if (!cancelled) setUrl(data.publicUrl);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [supabase, presId, index]);
   if (!url) return <div style={{...style, background:'#0f172a', display:'flex', alignItems:'center', justifyContent:'center'}}><div style={{width:20,height:20,border:'2px solid #f97316',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/></div>;
   if (error) return <div style={{...style, background:'#1e293b', display:'flex', alignItems:'center', justifyContent:'center', color:'#64748b', fontSize:11}}>Folie {index}</div>;
