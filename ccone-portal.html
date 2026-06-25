@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.7.7';
+        const APP_VERSION = '6.7.8';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -507,11 +507,12 @@
             const pbHeaders={'Content-Type':'application/json'};
             // Supabase-Spalten -> PocketBase-Felder; PB nutzt 'id','created','updated'.
             // Wir mappen 'created_at' -> 'created' beim Sortieren.
-            // Supabase-Zeitfelder -> PocketBase 'created'. Felder, die es in PB
-            // nicht als echte Spalte gibt, werden auf 'created' gemappt, damit
-            // PocketBase keine 400 (unknown sort field) wirft.
+            // Supabase-Zeitfelder -> PocketBase. 'created'/'updated' sind in PB
+            // System-Autodate-Felder, die je nach Version beim Sortieren 400 werfen.
+            // Wir sortieren stattdessen nach '@rowid' bzw. 'id' (immer vorhanden),
+            // was dieselbe chronologische Reihenfolge ergibt.
             const mapOrderField=(f)=>{
-                if(f==='created_at'||f==='started_at'||f==='start_time') return 'created';
+                if(f==='created_at'||f==='started_at'||f==='start_time'||f==='created'||f==='updated') return 'id';
                 return f; // slide_index u.ä. existieren als echte Felder
             };
 
@@ -551,11 +552,16 @@
                     // Lesen: gibt {data,error} zurück, ist awaitable via then()
                     async _run(){
                         try{
-                            const u=new URL(`${PB}/api/collections/${collection}/records`);
-                            u.searchParams.set('perPage', limitN||500);
-                            if(filters.length) u.searchParams.set('filter', buildFilter());
-                            if(orderBy) u.searchParams.set('sort', (orderAsc?'':'-')+orderBy);
-                            const r=await fetch(u.toString());
+                            const buildUrl=(withSort)=>{
+                                const u=new URL(`${PB}/api/collections/${collection}/records`);
+                                u.searchParams.set('perPage', limitN||500);
+                                if(filters.length) u.searchParams.set('filter', buildFilter());
+                                if(withSort&&orderBy) u.searchParams.set('sort', (orderAsc?'':'-')+orderBy);
+                                return u.toString();
+                            };
+                            let r=await fetch(buildUrl(true));
+                            // Falls Sortierung abgelehnt wird (400), ohne Sortierung erneut
+                            if(r.status===400&&orderBy){ r=await fetch(buildUrl(false)); }
                             if(!r.ok) return {data:null,error:{message:'HTTP '+r.status}};
                             const j=await r.json();
                             let items=(j.items||[]).map(it=>spiegelId(collection,it));
