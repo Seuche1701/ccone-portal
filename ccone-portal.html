@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.7.5';
+        const APP_VERSION = '6.7.6';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -493,9 +493,271 @@
         }
         function getSbClient(){
             if(_sbClient)return _sbClient;
+            // PocketBase-Adapter: bildet die Supabase-Client-API nach (.from/.storage/.channel),
+            // leitet aber alles auf PocketBase um. So funktionieren die Trainingscenter-Aufrufe
+            // unverändert weiter.
+            if(PB_ENABLED){ _sbClient=makePocketbaseSbAdapter(); return _sbClient; }
             if(window.supabase){_sbClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);return _sbClient;}
             return null;
         }
+
+        // ── PocketBase-Adapter mit Supabase-kompatibler API ──
+        function makePocketbaseSbAdapter(){
+            const PB=POCKETBASE_URL;
+            const pbHeaders={'Content-Type':'application/json'};
+            // Supabase-Spalten -> PocketBase-Felder; PB nutzt 'id','created','updated'.
+            // Wir mappen 'created_at' -> 'created' beim Sortieren.
+            const mapOrderField=(f)=> (f==='created_at'?'created':f);
+
+            // Query-Builder für eine Collection
+            function from(collection){
+                const filters=[]; // {field,op,value}
+                let orderBy=null, orderAsc=true, limitN=null;
+                let _single=false, _maybe=false;
+
+                const buildFilter=()=>filters.map(f=>{
+                    const v=(typeof f.value==='string')?`"${String(f.value).replace(/"/g,'\\"')}"`:f.value;
+                    return `${f.field}${f.op}${v}`;
+                }).join(' && ');
+
+                const api={
+                    select(/*cols*/){ return api; },
+                    eq(field,value){ filters.push({field,op:'=',value}); return api; },
+                    neq(field,value){ filters.push({field,op:'!=',value}); return api; },
+                    match(obj){ Object.entries(obj||{}).forEach(([k,v])=>filters.push({field:k,op:'=',value:v})); return api; },
+                    order(field,opts){ orderBy=mapOrderField(field); orderAsc=!(opts&&opts.ascending===false); return api; },
+                    limit(n){ limitN=n; return api; },
+                    single(){ _single=true; return api; },
+                    maybeSingle(){ _maybe=true; return api; },
+                    // Lesen: gibt {data,error} zurück, ist awaitable via then()
+                    async _run(){
+                        try{
+                            const u=new URL(`${PB}/api/collections/${collection}/records`);
+                            u.searchParams.set('perPage', limitN||500);
+                            if(filters.length) u.searchParams.set('filter', buildFilter());
+                            if(orderBy) u.searchParams.set('sort', (orderAsc?'':'-')+orderBy);
+                            const r=await fetch(u.toString());
+                            if(!r.ok) return {data:null,error:{message:'HTTP '+r.status}};
+                            const j=await r.json();
+                            let items=j.items||[];
+                            if(_single) return {data:items[0]||null,error:items[0]?null:{message:'no rows'}};
+                            if(_maybe) return {data:items[0]||null,error:null};
+                            return {data:items,error:null};
+                        }catch(e){ return {data:null,error:{message:e.message}}; }
+                    },
+                    then(resolve,reject){ return api._run().then(resolve,reject); },
+                    // Schreiboperationen
+                    insert(payload){
+                        const doInsert=async()=>{
+                            const rows=Array.isArray(payload)?payload:[payload];
+                            const out=[];
+                            for(const row of rows){
+                                const r=await fetch(`${PB}/api/collections/${collection}/records`,{method:'POST',headers:pbHeaders,body:JSON.stringify(row)});
+                                if(r.ok) out.push(await r.json());
+                            }
+                            return out;
+                        };
+                        const chain={
+                            select(){
+                                return {
+                                    single:async()=>{ const out=await doInsert(); return {data:out[0]||null,error:null}; },
+                                    maybeSingle:async()=>{ const out=await doInsert(); return {data:out[0]||null,error:null}; },
+                                    then(res,rej){ return doInsert().then(out=>({data:out,error:null})).then(res,rej); }
+                                };
+                            },
+                            then(res,rej){ return doInsert().then(out=>({data:out,error:null})).then(res,rej); }
+                        };
+                        return chain;
+                    },
+                    async upsert(payload){
+                        try{
+                            const rows=Array.isArray(payload)?payload:[payload];
+                            for(const row of rows){
+                                // upsert über 'id' (falls vorhanden) oder 'key'
+                                let existing=null;
+                                if(row.id){
+                                    const r=await fetch(`${PB}/api/collections/${collection}/records/${row.id}`);
+                                    if(r.ok) existing=await r.json();
+                                }else if(row.key){
+                                    const r=await fetch(`${PB}/api/collections/${collection}/records?filter=`+encodeURIComponent(`key="${row.key}"`)+'&perPage=1');
+                                    if(r.ok){const j=await r.json();existing=(j.items||[])[0]||null;}
+                                }
+                                if(existing){
+                                    await fetch(`${PB}/api/collections/${collection}/records/${existing.id}`,{method:'PATCH',headers:pbHeaders,body:JSON.stringify(row)});
+                                }else{
+                                    await fetch(`${PB}/api/collections/${collection}/records`,{method:'POST',headers:pbHeaders,body:JSON.stringify(row)});
+                                }
+                            }
+                            return {data:null,error:null};
+                        }catch(e){ return {data:null,error:{message:e.message}}; }
+                    },
+                    // update(payload).eq(...) / .match(...) — Filter sammeln, dann ausführen
+                    update(payload){
+                        const upd={
+                            _f:[],
+                            eq(field,value){ this._f.push({field,value}); return this; },
+                            match(obj){ Object.entries(obj||{}).forEach(([k,v])=>this._f.push({field:k,value:v})); return this; },
+                            async _run(){
+                                try{
+                                    const flt=this._f.map(f=>`${f.field}="${String(f.value).replace(/"/g,'\\"')}"`).join(' && ');
+                                    const u=new URL(`${PB}/api/collections/${collection}/records`);
+                                    if(flt) u.searchParams.set('filter', flt);
+                                    u.searchParams.set('perPage',500);
+                                    const r=await fetch(u.toString());
+                                    if(!r.ok) return {data:null,error:{message:'HTTP '+r.status}};
+                                    const items=(await r.json()).items||[];
+                                    for(const it of items){
+                                        await fetch(`${PB}/api/collections/${collection}/records/${it.id}`,{method:'PATCH',headers:pbHeaders,body:JSON.stringify(payload)});
+                                    }
+                                    return {data:items,error:null};
+                                }catch(e){ return {data:null,error:{message:e.message}}; }
+                            },
+                            then(resolve,reject){ return this._run().then(resolve,reject); }
+                        };
+                        return upd;
+                    },
+                    // delete().eq(...) / .match(...)
+                    delete(){
+                        const del={
+                            _f:[],
+                            eq(field,value){ this._f.push({field,value}); return this; },
+                            match(obj){ Object.entries(obj||{}).forEach(([k,v])=>this._f.push({field:k,value:v})); return this; },
+                            async _run(){
+                                try{
+                                    const flt=this._f.map(f=>`${f.field}="${String(f.value).replace(/"/g,'\\"')}"`).join(' && ');
+                                    const u=new URL(`${PB}/api/collections/${collection}/records`);
+                                    if(flt) u.searchParams.set('filter', flt);
+                                    u.searchParams.set('perPage',500);
+                                    const r=await fetch(u.toString());
+                                    if(!r.ok) return {error:{message:'HTTP '+r.status}};
+                                    const items=(await r.json()).items||[];
+                                    for(const it of items){
+                                        await fetch(`${PB}/api/collections/${collection}/records/${it.id}`,{method:'DELETE'});
+                                    }
+                                    return {error:null};
+                                }catch(e){ return {error:{message:e.message}}; }
+                            },
+                            then(resolve,reject){ return this._run().then(resolve,reject); }
+                        };
+                        return del;
+                    },
+                };
+                return api;
+            }
+
+            // Storage-Adapter: Slide-Bilder als Dateien in der dashboard_images-Collection
+            // wäre möglich, aber Trainings-Slides haben Pfade wie 'presId/slide-01.jpg'.
+            // Wir nutzen eine dedizierte Collection 'training_slides' mit File-Feld.
+            const storage={
+                from(bucket){
+                    return {
+                        async upload(path,file/*,opts*/){
+                            try{
+                                const fd=new FormData();
+                                fd.append('path',path);
+                                fd.append('bucket',bucket);
+                                fd.append('image',file);
+                                // search-then-replace: existiert der Pfad schon?
+                                const q=await fetch(`${PB}/api/collections/training_slides/records?filter=`+encodeURIComponent(`path="${path}"`)+'&perPage=1');
+                                const ex=q.ok?((await q.json()).items||[])[0]:null;
+                                if(ex){
+                                    await fetch(`${PB}/api/collections/training_slides/records/${ex.id}`,{method:'PATCH',body:fd});
+                                }else{
+                                    await fetch(`${PB}/api/collections/training_slides/records`,{method:'POST',body:fd});
+                                }
+                                return {data:{path},error:null};
+                            }catch(e){ return {data:null,error:{message:e.message}}; }
+                        },
+                        async download(path){
+                            try{
+                                const q=await fetch(`${PB}/api/collections/training_slides/records?filter=`+encodeURIComponent(`path="${path}"`)+'&perPage=1');
+                                const rec=q.ok?((await q.json()).items||[])[0]:null;
+                                if(!rec||!rec.image) return {data:null,error:{message:'not found'}};
+                                const fileUrl=`${PB}/api/files/training_slides/${rec.id}/${rec.image}`;
+                                const fr=await fetch(fileUrl);
+                                if(!fr.ok) return {data:null,error:{message:'HTTP '+fr.status}};
+                                const blob=await fr.blob();
+                                return {data:blob,error:null};
+                            }catch(e){ return {data:null,error:{message:e.message}}; }
+                        },
+                        getPublicUrl(path){
+                            // Wir geben eine URL zurück, die über download aufgelöst wird.
+                            // Da PB-Dateinamen die Record-ID brauchen, liefern wir einen Marker,
+                            // der im Code via download() genutzt wird. Für direkte <img>-Nutzung
+                            // lösen wir synchron nicht auf -> leere publicUrl, Code nutzt download.
+                            return {data:{publicUrl:`${PB}/_slide?path=`+encodeURIComponent(path)}};
+                        },
+                        async remove(paths){
+                            try{
+                                const arr=Array.isArray(paths)?paths:[paths];
+                                for(const path of arr){
+                                    const q=await fetch(`${PB}/api/collections/training_slides/records?filter=`+encodeURIComponent(`path="${path}"`)+'&perPage=1');
+                                    const rec=q.ok?((await q.json()).items||[])[0]:null;
+                                    if(rec) await fetch(`${PB}/api/collections/training_slides/records/${rec.id}`,{method:'DELETE'});
+                                }
+                                return {error:null};
+                            }catch(e){ return {error:{message:e.message}}; }
+                        }
+                    };
+                }
+            };
+
+            // Realtime über PocketBase SSE
+            function channel(name){
+                const subs=[];
+                const ch={
+                    on(_event,_filter,cb){ subs.push({table:(_filter&&_filter.table)||null,cb}); return ch; },
+                    subscribe(){
+                        // Pro Tabelle eine PB-SSE-Subscription
+                        subs.forEach(s=>{
+                            if(!s.table) return;
+                            _pbSubscribe(s.table,(e)=>{ s.cb({new:e.record,old:e.record,eventType:e.action}); });
+                        });
+                        return ch;
+                    },
+                    _name:name, _subs:subs
+                };
+                return ch;
+            }
+            const removeChannel=(ch)=>{ if(ch&&ch._subs) ch._subs.forEach(s=>{ if(s.table) _pbUnsubscribe(s.table); }); };
+
+            return { from, storage, channel, removeChannel };
+        }
+
+        // ── PocketBase SSE (Realtime) ──
+        let _pbSSE=null, _pbClientId=null;
+        const _pbSubs={}; // table -> [callbacks]
+        function _pbEnsureSSE(){
+            if(_pbSSE) return;
+            _pbSSE=new EventSource(`${POCKETBASE_URL}/api/realtime`);
+            _pbSSE.addEventListener('PB_CONNECT',(e)=>{
+                try{ _pbClientId=JSON.parse(e.data).clientId; _pbSyncSubscriptions(); }catch(err){}
+            });
+        }
+        function _pbSyncSubscriptions(){
+            if(!_pbClientId) return;
+            const subscriptions=Object.keys(_pbSubs).map(t=>t+'/*');
+            fetch(`${POCKETBASE_URL}/api/realtime`,{
+                method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({clientId:_pbClientId,subscriptions})
+            }).catch(()=>{});
+            // Listener pro Tabelle registrieren
+            Object.keys(_pbSubs).forEach(table=>{
+                Object.keys(_pbSubs).forEach(()=>{});
+            });
+        }
+        function _pbSubscribe(table,cb){
+            if(!_pbSubs[table]) _pbSubs[table]=[];
+            _pbSubs[table].push(cb);
+            _pbEnsureSSE();
+            if(_pbSSE){
+                _pbSSE.addEventListener(table+'/*',(e)=>{
+                    try{ const d=JSON.parse(e.data); (_pbSubs[table]||[]).forEach(fn=>fn(d)); }catch(err){}
+                });
+            }
+            _pbSyncSubscriptions();
+        }
+        function _pbUnsubscribe(table){ delete _pbSubs[table]; _pbSyncSubscriptions(); }
         const getBackendMode = () => {
             // URL-Notschalter: ?backend=google erzwingt Google Sheets
             const urlMode = new URLSearchParams(window.location.search).get('backend');
