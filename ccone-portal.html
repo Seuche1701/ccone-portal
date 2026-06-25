@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.7.6';
+        const APP_VERSION = '6.7.7';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -507,7 +507,22 @@
             const pbHeaders={'Content-Type':'application/json'};
             // Supabase-Spalten -> PocketBase-Felder; PB nutzt 'id','created','updated'.
             // Wir mappen 'created_at' -> 'created' beim Sortieren.
-            const mapOrderField=(f)=> (f==='created_at'?'created':f);
+            // Supabase-Zeitfelder -> PocketBase 'created'. Felder, die es in PB
+            // nicht als echte Spalte gibt, werden auf 'created' gemappt, damit
+            // PocketBase keine 400 (unknown sort field) wirft.
+            const mapOrderField=(f)=>{
+                if(f==='created_at'||f==='started_at'||f==='start_time') return 'created';
+                return f; // slide_index u.ä. existieren als echte Felder
+            };
+
+            // Collections, deren 'id' in Wahrheit ein Slug ist (kein PB-ID-Format).
+            // Wir speichern den Slug im Feld 'key' und spiegeln ihn beim Lesen als 'id' zurück.
+            const SLUG_COLLECTIONS={training_presentations:true};
+            const spiegelId=(collection,rec)=>{
+                if(!rec) return rec;
+                if(SLUG_COLLECTIONS[collection]&&rec.key){ return {...rec, id:rec.key, _pbId:rec.id}; }
+                return rec;
+            };
 
             // Query-Builder für eine Collection
             function from(collection){
@@ -522,7 +537,11 @@
 
                 const api={
                     select(/*cols*/){ return api; },
-                    eq(field,value){ filters.push({field,op:'=',value}); return api; },
+                    eq(field,value){
+                        // Bei Slug-Collections: Filter auf 'id' -> auf 'key' umbiegen
+                        if(SLUG_COLLECTIONS[collection]&&field==='id') field='key';
+                        filters.push({field,op:'=',value}); return api;
+                    },
                     neq(field,value){ filters.push({field,op:'!=',value}); return api; },
                     match(obj){ Object.entries(obj||{}).forEach(([k,v])=>filters.push({field:k,op:'=',value:v})); return api; },
                     order(field,opts){ orderBy=mapOrderField(field); orderAsc=!(opts&&opts.ascending===false); return api; },
@@ -539,7 +558,7 @@
                             const r=await fetch(u.toString());
                             if(!r.ok) return {data:null,error:{message:'HTTP '+r.status}};
                             const j=await r.json();
-                            let items=j.items||[];
+                            let items=(j.items||[]).map(it=>spiegelId(collection,it));
                             if(_single) return {data:items[0]||null,error:items[0]?null:{message:'no rows'}};
                             if(_maybe) return {data:items[0]||null,error:null};
                             return {data:items,error:null};
@@ -572,8 +591,11 @@
                     async upsert(payload){
                         try{
                             const rows=Array.isArray(payload)?payload:[payload];
-                            for(const row of rows){
-                                // upsert über 'id' (falls vorhanden) oder 'key'
+                            for(let row of rows){
+                                // Slug-Collections: 'id' wird zu 'key', PB vergibt eigene id
+                                if(SLUG_COLLECTIONS[collection]&&row.id){
+                                    row={...row, key:row.id}; delete row.id;
+                                }
                                 let existing=null;
                                 if(row.id){
                                     const r=await fetch(`${PB}/api/collections/${collection}/records/${row.id}`);
