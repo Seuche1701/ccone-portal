@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.8.0';
+        const APP_VERSION = '6.8.1';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -12751,67 +12751,42 @@ Regeln:
                 const fName=selectedFile.name;const fSize=selectedFile.size;const fType=selectedFile.type;
                 const materialId=Date.now().toString();
                 try{
-                    // Phase 1: Read file
-                    setUploadPhase('reading');setUploadProgress(5);
-                    setUploadStatusText('Datei einlesen ('+Math.round(fSize/1024)+' KB)...');
-                    const reader=new FileReader();
-                    const base64Full=await new Promise((resolve,reject)=>{reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(selectedFile)});
-                    const base64Data=base64Full.split(',')[1];
-                    setUploadProgress(15);setUploadStatusText('✅ Datei eingelesen ('+Math.round(fSize/1024)+' KB)');
-                    await new Promise(r=>setTimeout(r,300));
+                    // Datei direkt in PocketBase-Storage hochladen
+                    setUploadPhase('uploading');setUploadProgress(15);
+                    setUploadStatusText('Lade in PocketBase hoch ('+Math.round(fSize/1024/1024*10)/10+' MB)...');
 
-                    // Phase 2: Upload to Drive
-                    setUploadPhase('uploading');setUploadProgress(20);
-                    setUploadStatusText('Lade auf Google Drive hoch...');
-                    const progressInterval=setInterval(()=>{setUploadProgress(p=>Math.min(p+1,55))},800);
-                    await api.uploadFile({fileName:fName,mimeType:fType,base64:base64Data,materialId});
-                    clearInterval(progressInterval);
-                    setUploadProgress(60);setUploadStatusText('Upload an Drive gesendet — warte auf Verarbeitung...');
+                    const fd=new FormData();
+                    fd.append('material_id',materialId);
+                    fd.append('title',uploadForm.title.trim());
+                    fd.append('mime',fType);
+                    fd.append('file',selectedFile);
 
-                    // Phase 3: Verify Drive
-                    setUploadPhase('verifying');setUploadProgress(65);
-                    setUploadStatusText('Warte auf Drive-Bestätigung...');
-                    await new Promise(r=>setTimeout(r,12000));
-                    let driveInfo=null;
-                    for(let attempt=0;attempt<8;attempt++){
-                        setUploadStatusText('Überprüfe Drive... (Versuch '+(attempt+1)+'/8)');
-                        setUploadProgress(65+attempt*3);
-                        try{
-                            const resp=await fetch(GOOGLE_SCRIPT_URL+'?action=readCells&cells=A11&t='+Date.now());
-                            const cellData=await resp.json();
-                            if(cellData&&cellData.A11){
-                                const info=typeof cellData.A11==='string'?JSON.parse(cellData.A11):cellData.A11;
-                                if(info.materialId===materialId||info.fileName===fName){driveInfo=info;break}
-                            }
-                        }catch(e){console.warn('A11 poll',attempt,e)}
-                        await new Promise(r=>setTimeout(r,4000));
-                    }
+                    const upResp=await fetch(POCKETBASE_URL+'/api/collections/material_files/records',{method:'POST',body:fd});
+                    if(!upResp.ok){throw new Error('PocketBase-Upload fehlgeschlagen: HTTP '+upResp.status)}
+                    const upRec=await upResp.json();
+                    setUploadProgress(80);setUploadStatusText('✅ Datei in PocketBase gespeichert');
 
-                    // Phase 4: Save metadata
+                    // Direkte Datei-URL bauen (Record-ID + Dateiname)
+                    const pbFileUrl=POCKETBASE_URL+'/api/files/material_files/'+upRec.id+'/'+upRec.file;
+
+                    // Metadaten im Material speichern (pbFileId = Referenz, keine base64-Daten im KV-Store)
                     setUploadPhase('saving');setUploadProgress(90);
                     setUploadStatusText('Speichere Metadaten...');
                     const newMaterial={
                         id:materialId,title:uploadForm.title.trim(),description:uploadForm.description.trim(),
                         category:uploadForm.category,type:uploadForm.type,standort:uploadForm.standort||'alle',fileName:fName,fileSize:fSize,mimeType:fType,
-                        driveFileId:driveInfo?.fileId||'',driveUrl:driveInfo?.url||'',driveViewUrl:driveInfo?.viewUrl||'',
+                        pbFileId:upRec.id,pbFileName:upRec.file,pbFileUrl:pbFileUrl,
+                        driveFileId:'',driveUrl:'',driveViewUrl:'',
                         assignedTo:assignTo.length>0?[...assignTo]:[],questions:[],answers:{},
                         uploadedBy:{id:currentUser.id,name:currentUser.name},uploadedAt:new Date().toISOString(),
                         pushed:false,pushedAt:null,views:0,viewedBy:[]
                     };
-                    newMaterial._tempData=base64Full;
                     await updateData({...appData,trainingMaterials:[...materials,newMaterial]});
-                    
-                    // Done
+
                     setUploadProgress(100);
-                    if(driveInfo){
-                        setUploadPhase('done');
-                        setUploadStatusText('✅ Erfolgreich auf Google Drive hochgeladen und verifiziert!');
-                        setUploadResult({fileName:fName,size:fSize,driveId:driveInfo.fileId,driveUrl:driveInfo.viewUrl||driveInfo.url});
-                    }else{
-                        setUploadPhase('done');
-                        setUploadStatusText('⚠️ Gespeichert — Drive-Verifizierung ausstehend (bei Refresh verfügbar)');
-                        setUploadResult({fileName:fName,size:fSize,driveId:null,driveUrl:null});
-                    }
+                    setUploadPhase('done');
+                    setUploadStatusText('✅ Erfolgreich in PocketBase hochgeladen!');
+                    setUploadResult({fileName:fName,size:fSize,driveId:upRec.id,driveUrl:pbFileUrl});
                     setSelectedFile(null);setAssignTo([]);
                     if(fileInputRef.current)fileInputRef.current.value='';
                 }catch(e){
@@ -12853,7 +12828,7 @@ Regeln:
                     setPlayingId(null);setAudioProgress(0);setDriveEmbed(null);return;
                 }
                 markViewed(material.id);
-                var src=material._tempData||material.data;
+                var src=material.pbFileUrl||material._tempData||material.data;
                 if(src){
                     setDriveEmbed(null);setPlayingId(material.id);setAudioProgress(0);
                     setTimeout(function(){if(audioRef.current){audioRef.current.src=src;audioRef.current.play().catch(function(e){console.warn('play error',e)})}},100);
@@ -12877,7 +12852,7 @@ Regeln:
                 showNotification('Audio nicht verfuegbar','error');
             };
 
-            const openPdf=(material)=>{markViewed(material.id);if(material._tempData||material.data){setPdfViewer({...material,data:material._tempData||material.data})}else if(material.driveFileId){setPdfViewer({...material,data:'https://drive.google.com/file/d/'+material.driveFileId+'/preview'})}else if(material.description){setPdfViewer({...material,data:'data:text/html;charset=utf-8,'+encodeURIComponent('<html><head><style>body{font-family:system-ui;background:#0f172a;color:#e2e8f0;padding:2rem;line-height:1.8;white-space:pre-wrap;font-size:14px}h1{color:#6ee7b7;font-size:1.2rem;margin-bottom:1rem}</style></head><body><h1>'+material.title+'</h1>'+material.description.replace(/</g,'&lt;')+'</body></html>')})}else{showNotification('Nicht verfuegbar','error')}};
+            const openPdf=(material)=>{markViewed(material.id);if(material.pbFileUrl){setPdfViewer({...material,data:material.pbFileUrl})}else if(material._tempData||material.data){setPdfViewer({...material,data:material._tempData||material.data})}else if(material.driveFileId){setPdfViewer({...material,data:'https://drive.google.com/file/d/'+material.driveFileId+'/preview'})}else if(material.description){setPdfViewer({...material,data:'data:text/html;charset=utf-8,'+encodeURIComponent('<html><head><style>body{font-family:system-ui;background:#0f172a;color:#e2e8f0;padding:2rem;line-height:1.8;white-space:pre-wrap;font-size:14px}h1{color:#6ee7b7;font-size:1.2rem;margin-bottom:1rem}</style></head><body><h1>'+material.title+'</h1>'+material.description.replace(/</g,'&lt;')+'</body></html>')})}else{showNotification('Nicht verfuegbar','error')}};
 
             const formatSize=(bytes)=>{if(bytes<1024)return bytes+'B';if(bytes<1024*1024)return(bytes/1024).toFixed(1)+'KB';return(bytes/(1024*1024)).toFixed(1)+'MB'};
             const formatTime=(s)=>{if(!s||!isFinite(s))return '0:00';const m=Math.floor(s/60);return m+':'+(Math.floor(s%60)+'').padStart(2,'0')};
@@ -13234,7 +13209,7 @@ Regeln:
                                                                 {isPlaying?'⏹ Stopp':'▶️ Abspielen'}
                                                             </button>
                                                         ):mat.type==='video'?(
-                                                            <button onClick={()=>{markViewed(mat.id);const localSrc=mat._tempData||mat.data;if(localSrc){setPdfViewer({...mat,data:localSrc})}else if(mat.driveFileId){setPdfViewer({...mat,data:'https://drive.google.com/file/d/'+mat.driveFileId+'/preview'})}else{showNotification('Video nicht verfügbar','error')}}} className="flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all"
+                                                            <button onClick={()=>{markViewed(mat.id);const localSrc=mat.pbFileUrl||mat._tempData||mat.data;if(localSrc){setPdfViewer({...mat,data:localSrc})}else if(mat.driveFileId){setPdfViewer({...mat,data:'https://drive.google.com/file/d/'+mat.driveFileId+'/preview'})}else{showNotification('Video nicht verfügbar','error')}}} className="flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all"
                                                                 style={{background:'rgba(236,72,153,0.12)',border:'1.5px solid rgba(236,72,153,0.25)',color:'#f9a8d4'}}>
                                                                 🎬 Video ansehen
                                                             </button>
@@ -13320,11 +13295,12 @@ Regeln:
                                     <div><h3 className="font-bold text-white">{pdfViewer.type==='video'?'🎬':'📄'} {pdfViewer.title}</h3><p className="text-xs text-slate-400">{pdfViewer.fileName||'Google Drive'}</p></div>
                                     <div className="flex items-center gap-2">
                                         {pdfViewer.driveFileId&&<a href={'https://drive.google.com/file/d/'+pdfViewer.driveFileId+'/view'} target="_blank" className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{background:'rgba(6,182,212,0.15)',border:'1px solid rgba(6,182,212,0.3)',color:'#67e8f9'}}>↗ Drive öffnen</a>}
+                                        <button onClick={()=>{const el=document.getElementById('pdfViewerFrame');if(el){if(el.requestFullscreen)el.requestFullscreen();else if(el.webkitRequestFullscreen)el.webkitRequestFullscreen();}}} className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{background:'rgba(168,85,247,0.15)',border:'1px solid rgba(168,85,247,0.4)',color:'#d8b4fe'}}>⛶ Vollbild</button>
                                         {pdfViewer.data&&pdfViewer.data.startsWith('data:')&&<a href={pdfViewer.data} download={pdfViewer.fileName} className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{background:'rgba(6,182,212,0.15)',border:'1px solid rgba(6,182,212,0.3)',color:'#67e8f9'}}>⬇ Download</a>}
                                         <button onClick={()=>setPdfViewer(null)} className="text-slate-400 hover:text-white p-1"><Icon name="x" size={24}/></button>
                                     </div>
                                 </div>
-                                <div className="flex-1 overflow-auto p-1 bg-slate-800"><iframe src={pdfViewer.data} className="w-full h-full min-h-[70vh] rounded" style={{border:'none'}} allow="autoplay; encrypted-media" allowFullScreen/></div>
+                                <div className="flex-1 overflow-auto p-1 bg-slate-800"><iframe id="pdfViewerFrame" src={pdfViewer.data} className="w-full h-full min-h-[70vh] rounded" style={{border:'none'}} allow="autoplay; encrypted-media" allowFullScreen/></div>
                             </div>
                         </div>
                     )}
