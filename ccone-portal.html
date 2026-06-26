@@ -304,7 +304,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.7.9';
+        const APP_VERSION = '6.8.0';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -518,7 +518,7 @@
 
             // Collections, deren 'id' in Wahrheit ein Slug ist (kein PB-ID-Format).
             // Wir speichern den Slug im Feld 'key' und spiegeln ihn beim Lesen als 'id' zurück.
-            const SLUG_COLLECTIONS={training_presentations:true};
+            const SLUG_COLLECTIONS={training_presentations:true, training_playlists:true};
             const spiegelId=(collection,rec)=>{
                 if(!rec) return rec;
                 if(SLUG_COLLECTIONS[collection]&&rec.key){ return {...rec, id:rec.key, _pbId:rec.id}; }
@@ -576,9 +576,13 @@
                         const doInsert=async()=>{
                             const rows=Array.isArray(payload)?payload:[payload];
                             const out=[];
-                            for(const row of rows){
+                            for(let row of rows){
+                                // Slug-Collections: 'id' wird zu 'key', PB vergibt eigene id
+                                if(SLUG_COLLECTIONS[collection]&&row.id){
+                                    row={...row, key:row.id}; delete row.id;
+                                }
                                 const r=await fetch(`${PB}/api/collections/${collection}/records`,{method:'POST',headers:pbHeaders,body:JSON.stringify(row)});
-                                if(r.ok) out.push(await r.json());
+                                if(r.ok) out.push(spiegelId(collection, await r.json()));
                             }
                             return out;
                         };
@@ -623,8 +627,8 @@
                     update(payload){
                         const upd={
                             _f:[],
-                            eq(field,value){ this._f.push({field,value}); return this; },
-                            match(obj){ Object.entries(obj||{}).forEach(([k,v])=>this._f.push({field:k,value:v})); return this; },
+                            eq(field,value){ if(SLUG_COLLECTIONS[collection]&&field==='id') field='key'; this._f.push({field,value}); return this; },
+                            match(obj){ Object.entries(obj||{}).forEach(([k,v])=>{ if(SLUG_COLLECTIONS[collection]&&k==='id') k='key'; this._f.push({field:k,value:v}); }); return this; },
                             async _run(){
                                 try{
                                     const flt=this._f.map(f=>`${f.field}="${String(f.value).replace(/"/g,'\\"')}"`).join(' && ');
@@ -648,8 +652,8 @@
                     delete(){
                         const del={
                             _f:[],
-                            eq(field,value){ this._f.push({field,value}); return this; },
-                            match(obj){ Object.entries(obj||{}).forEach(([k,v])=>this._f.push({field:k,value:v})); return this; },
+                            eq(field,value){ if(SLUG_COLLECTIONS[collection]&&field==='id') field='key'; this._f.push({field,value}); return this; },
+                            match(obj){ Object.entries(obj||{}).forEach(([k,v])=>{ if(SLUG_COLLECTIONS[collection]&&k==='id') k='key'; this._f.push({field:k,value:v}); }); return this; },
                             async _run(){
                                 try{
                                     const flt=this._f.map(f=>`${f.field}="${String(f.value).replace(/"/g,'\\"')}"`).join(' && ');
