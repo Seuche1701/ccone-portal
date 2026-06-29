@@ -40,6 +40,7 @@
 
 
 
+
         body{font-family:'Outfit',sans-serif}
         .glass-card{background:rgba(255,255,255,0.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff}
         @media(max-width:1200px){.dash-3col{grid-template-columns:1fr!important}.dash-sidebar{position:static!important}}
@@ -267,6 +268,7 @@
     
     
     
+    
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -298,13 +300,14 @@
 
 
 
+
         const{useState,useEffect,useRef}=React;
         const asArr=(v)=>Array.isArray(v)?v:[];
         
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.8.1';
+        const APP_VERSION = '6.8.2';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -326,10 +329,15 @@
         // ════════════════════════════════════════════════════════════
         // POCKETBASE-ÜBERSETZER  (Supabase -> PocketBase, ohne 28 Stellen anzufassen)
         // ────────────────────────────────────────────────────────────
-        // Adresse der PocketBase-Instanz. Lokal am TV-PC: 127.0.0.1.
-        // Für Berlin/Chemnitz via Tunnel: hier die Tunnel-URL eintragen
-        // (oder in localStorage 'pocketbaseUrl' setzen).
-        const POCKETBASE_URL = localStorage.getItem('pocketbaseUrl') || 'http://127.0.0.1:8090';
+        // ╔══════════════════════════════════════════════════════════╗
+        // ║  SERVER-IP HIER EINTRAGEN (bei IP-Wechsel nur diese Zeile ändern!)  ║
+        // ╚══════════════════════════════════════════════════════════╝
+        const SERVER_IP = '10.23.11.156';   // <-- nur diese Zahl bei IP-Wechsel anpassen
+
+        // Clients verbinden sich automatisch zur Server-IP – kein localStorage nötig.
+        // Wer eine andere Adresse braucht (z.B. Tunnel), kann sie per
+        // localStorage 'pocketbaseUrl' überschreiben.
+        const POCKETBASE_URL = localStorage.getItem('pocketbaseUrl') || ('http://' + SERVER_IP + ':8090');
         // Master-Schalter: false => Übersetzer aus, alles läuft wie früher gegen Supabase.
         const PB_ENABLED = (localStorage.getItem('usePocketbase') ?? '1') === '1';
 
@@ -18200,12 +18208,14 @@ function TrainingCenter({ supabase, isAdmin }) {
     
     
     
+    
     </script>
     <script>
     window.__BABEL_SOURCE=document.querySelector('script[type="text/babel"]').textContent;
     window.__CSS_SOURCE=document.querySelector('style').textContent;
     </script>
     <script>
+
 
 
 
@@ -18313,6 +18323,7 @@ function TrainingCenter({ supabase, isAdmin }) {
             attributes: true,
             attributeFilter: ['class']
         });
+    
     
     
     
