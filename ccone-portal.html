@@ -307,7 +307,7 @@
         // ============================================
         // APP VERSION - Bei jedem Update hochzählen!
         // ============================================
-        const APP_VERSION = '6.8.2';
+        const APP_VERSION = '6.8.3';
         
         // ============================================
         // GOOGLE SHEETS KONFIGURATION
@@ -5329,49 +5329,51 @@ function getOrCreateSheet(){
             // Gesprächsleitfäden für VNR
             // Standard-Templates (werden überschrieben wenn custom templates vorhanden)
             // EKD Coaching-Kriterien: 8 Kategorien mit 27 Einzelkriterien (offizielle Bewertungsmatrix)
+            // 'allowed' = erlaubte Bewertungsstufen laut Matrix (orange Felder = gesperrt).
+            // 'na' (nicht anwendbar) bleibt überall zusätzlich wählbar.
             const EKD_CRITERIA={
                 'GESPRÄCHSERÖFFNUNG':{weight:10,criteria:[
-                    {nr:1,name:'Begrüßung',desc:'Nennt vollständigen Namen sowie Unternehmen'},
-                    {nr:2,name:'Persönliche Bindung',desc:'Baut direkt eine persönliche Bindung auf'},
+                    {nr:1,name:'Begrüßung',desc:'Nennt vollständigen Namen sowie Unternehmen',allowed:['erfuellt','teilweise','nicht','fail']},
+                    {nr:2,name:'Persönliche Bindung',desc:'Baut direkt eine persönliche Bindung auf',allowed:['erfuellt','nicht','fail']},
                 ]},
                 'LEADS MIDDLEWARE':{weight:8,criteria:[
-                    {nr:3,name:'Notizen / vorherige Dokumentation',desc:'Leadquelle beachtet, Notizen & Termine aus der Vergangenheit dokumentiert'},
+                    {nr:3,name:'Notizen / vorherige Dokumentation',desc:'Leadquelle beachtet, Notizen & Termine aus der Vergangenheit dokumentiert',allowed:['erfuellt','nicht']},
                 ]},
                 'EMPATHIE':{weight:15,criteria:[
-                    {nr:4,name:'Anpassung Gesprächsführung',desc:'Führt das Gespräch und passt sich dem Kunden an'},
-                    {nr:5,name:'Gesprächsatmosphäre',desc:'Stellt eine freundliche Gesprächsatmosphäre her'},
-                    {nr:6,name:'Positive Formulierungen',desc:'Nutzt mehrere positive Formulierungen'},
-                    {nr:7,name:'Gesprächsstruktur',desc:'Roter Faden erkennbar, logische Reihenfolge, sachdienlich'},
-                    {nr:8,name:'Auftritt als Markenbotschafter',desc:'Sorgt für positives Image, bestärkt Kunden in Entscheidung für EKD'},
+                    {nr:4,name:'Anpassung Gesprächsführung',desc:'Führt das Gespräch und passt sich dem Kunden an',allowed:['erfuellt','nicht']},
+                    {nr:5,name:'Gesprächsatmosphäre',desc:'Stellt eine freundliche Gesprächsatmosphäre her',allowed:['erfuellt','teilweise','nicht','fail']},
+                    {nr:6,name:'Positive Formulierungen',desc:'Nutzt mehrere positive Formulierungen',allowed:['erfuellt','teilweise','nicht','fail']},
+                    {nr:7,name:'Gesprächsstruktur',desc:'Roter Faden erkennbar, logische Reihenfolge, sachdienlich',allowed:['erfuellt','teilweise','nicht']},
+                    {nr:8,name:'Auftritt als Markenbotschafter',desc:'Sorgt für positives Image, bestärkt Kunden in Entscheidung für EKD',allowed:['erfuellt','nicht','fail']},
                 ]},
                 'KOMMUNIKATION':{weight:15,criteria:[
-                    {nr:9,name:'Stimme / Artikulation / Sprache',desc:'Keine Verlegenheitslaute, klar, kompletter Satzbau, angemessene Lautstärke'},
-                    {nr:10,name:'Namentliche Ansprache',desc:'Gezielte Ansprache als Klimafaktor, mind. 3x im Gespräch'},
-                    {nr:11,name:'Höflichkeit',desc:'Bitte/Danke/Sehr gerne, respektvoll, nicht ohne Entschuldigung unterbrechen'},
-                    {nr:12,name:'Fragetechniken / Bedarfsfragen',desc:'Effektive Fragetechniken, keine unnötigen Fragen'},
+                    {nr:9,name:'Stimme / Artikulation / Sprache',desc:'Keine Verlegenheitslaute, klar, kompletter Satzbau, angemessene Lautstärke',allowed:['erfuellt','teilweise','nicht']},
+                    {nr:10,name:'Namentliche Ansprache',desc:'Gezielte Ansprache als Klimafaktor, mind. 3x im Gespräch',allowed:['erfuellt','teilweise','nicht','fail']},
+                    {nr:11,name:'Höflichkeit',desc:'Bitte/Danke/Sehr gerne, respektvoll, nicht ohne Entschuldigung unterbrechen',allowed:['erfuellt','teilweise','nicht','fail']},
+                    {nr:12,name:'Fragetechniken / Bedarfsfragen',desc:'Effektive Fragetechniken, keine unnötigen Fragen',allowed:['erfuellt','teilweise','nicht']},
                 ]},
                 'NUTZEN & ANGEBOT':{weight:12,criteria:[
-                    {nr:13,name:'Beratungsumfang',desc:'Geht gezielt und umfänglich auf Produktinhalte ein, holt Kunden ab'},
-                    {nr:14,name:'Nutzenargumentation',desc:'Argumentation auf Grundlage des individuellen Kundennutzens'},
+                    {nr:13,name:'Beratungsumfang',desc:'Geht gezielt und umfänglich auf Produktinhalte ein, holt Kunden ab',allowed:['erfuellt','teilweise','nicht','fail']},
+                    {nr:14,name:'Nutzenargumentation',desc:'Argumentation auf Grundlage des individuellen Kundennutzens',allowed:['erfuellt','nicht']},
                 ]},
                 'EINWANDBEHANDLUNG':{weight:13,criteria:[
-                    {nr:15,name:'Erkennen von Vorwänden',desc:'Nimmt alle Einwände auf'},
-                    {nr:16,name:'Enttarnung von Vorwänden',desc:'Vorwände werden enttarnt und zugeordnet'},
-                    {nr:17,name:'Erkennen von Eskalationspotential',desc:'Erkennt Eskalationspotential rechtzeitig'},
-                    {nr:18,name:'Einwandbehandlung',desc:'Kundeneinwände individuell entkräftet (Abholen – Argumentation – Alternative)'},
+                    {nr:15,name:'Erkennen von Vorwänden',desc:'Nimmt alle Einwände auf',allowed:['erfuellt','teilweise','nicht','fail']},
+                    {nr:16,name:'Enttarnung von Vorwänden',desc:'Vorwände werden enttarnt und zugeordnet',allowed:['erfuellt','teilweise','nicht','fail']},
+                    {nr:17,name:'Erkennen von Eskalationspotential',desc:'Erkennt Eskalationspotential rechtzeitig',allowed:['erfuellt','nicht']},
+                    {nr:18,name:'Einwandbehandlung',desc:'Kundeneinwände individuell entkräftet (Abholen – Argumentation – Alternative)',allowed:['erfuellt','fail']},
                 ]},
                 'FACHLICHE KOMPETENZ':{weight:15,criteria:[
-                    {nr:19,name:'Saisonanlage vs Ganzjahreskonzept',desc:'Preissignalfähigkeit & Kostennutzen erläutert, bestenfalls bildhaft, Hinweis auf AWATTAR'},
-                    {nr:20,name:'Produktmerkmale',desc:'Produktmerkmale in allen Details, Kunde vollständig abgeholt, Fachwissen'},
-                    {nr:21,name:'Paragraph 14a',desc:'Gesetzgebung Paragraph 14a erläutert'},
-                    {nr:22,name:'Stromverbrauch abgefragt?',desc:'Kunde nach seinem Stromverbrauch gefragt'},
+                    {nr:19,name:'Saisonanlage vs Ganzjahreskonzept',desc:'Preissignalfähigkeit & Kostennutzen erläutert, bestenfalls bildhaft, Hinweis auf AWATTAR',allowed:['erfuellt','teilweise']},
+                    {nr:20,name:'Produktmerkmale',desc:'Produktmerkmale in allen Details, Kunde vollständig abgeholt, Fachwissen',allowed:['erfuellt','teilweise','nicht','fail']},
+                    {nr:21,name:'Paragraph 14a',desc:'Gesetzgebung Paragraph 14a erläutert',allowed:['erfuellt']},
+                    {nr:22,name:'Stromverbrauch abgefragt?',desc:'Kunde nach seinem Stromverbrauch gefragt',allowed:['erfuellt']},
                 ]},
                 'GESPRÄCHSABSCHLUSS':{weight:12,criteria:[
-                    {nr:23,name:'E-Mail-/Wohnadresse abgeglichen',desc:'Adressen abgefragt und noch einmal buchstabiert'},
-                    {nr:24,name:'Weiteres Vorgehen',desc:'Weiteres Vorgehen erörtert'},
-                    {nr:25,name:'Zusammenfassung',desc:'Bei Take: Zusammenfassung von Preis, Leistung und durchgeführten Maßnahmen'},
-                    {nr:26,name:'Positive Verabschiedung',desc:'Nennt Kunden beim Namen, bedankt sich, tageszeit-angepasste Grußformel'},
-                    {nr:27,name:'Nachbearbeitung / Case-Dokumentation',desc:'Gespräch und wichtigste Punkte dokumentiert'},
+                    {nr:23,name:'E-Mail-/Wohnadresse abgeglichen',desc:'Adressen abgefragt und noch einmal buchstabiert',allowed:['erfuellt','teilweise','fail']},
+                    {nr:24,name:'Weiteres Vorgehen',desc:'Weiteres Vorgehen erörtert',allowed:['erfuellt','fail']},
+                    {nr:25,name:'Zusammenfassung',desc:'Bei Take: Zusammenfassung von Preis, Leistung und durchgeführten Maßnahmen',allowed:['erfuellt','fail']},
+                    {nr:26,name:'Positive Verabschiedung',desc:'Nennt Kunden beim Namen, bedankt sich, tageszeit-angepasste Grußformel',allowed:['erfuellt','teilweise','nicht','fail']},
+                    {nr:27,name:'Nachbearbeitung / Case-Dokumentation',desc:'Gespräch und wichtigste Punkte dokumentiert',allowed:['erfuellt','teilweise','nicht','fail']},
                 ]},
             };
 
@@ -5890,12 +5892,28 @@ Antworte NUR mit JSON:
                                 const statusMap={};
                                 cres.criteria.forEach(c=>{statusMap[c.nr]={status:c.status,note:c.note};});
                                 const validStatus=['erfuellt','teilweise','nicht','fail','na'];
+                                // Wenn die KI eine laut Matrix gesperrte Stufe wählt, auf die
+                                // nächstplausible erlaubte Stufe abbilden.
+                                const mapToAllowed=(status,allowed)=>{
+                                    if(status==='na') return 'na';
+                                    if(!allowed||allowed.includes(status)) return status;
+                                    // Reihenfolge: schlechtere Bewertung Richtung erlaubt verschieben
+                                    const order=['erfuellt','teilweise','nicht','fail'];
+                                    const idx=order.indexOf(status);
+                                    // zuerst nach "strenger" (höherer Index) suchen, dann nach "milder"
+                                    for(let d=1;d<order.length;d++){
+                                        if(order[idx+d]&&allowed.includes(order[idx+d])) return order[idx+d];
+                                        if(order[idx-d]&&allowed.includes(order[idx-d])) return order[idx-d];
+                                    }
+                                    return allowed[0]||'erfuellt';
+                                };
                                 const updated=checklist.map(item=>{
                                     if(!item.criteria) return item;
                                     return {...item,criteria:item.criteria.map(c=>{
                                         const m=statusMap[c.nr];
                                         if(!m||!validStatus.includes(m.status)) return c;
-                                        return {...c,status:m.status,aiNote:m.note||''};
+                                        const finalStatus=mapToAllowed(m.status,c.allowed);
+                                        return {...c,status:finalStatus,aiNote:m.note||''};
                                     })};
                                 });
                                 setChecklist(updated);
@@ -6655,6 +6673,18 @@ Antworte NUR mit dem JSON-Objekt, kein Markdown, keine Backticks.`;
                                                                     <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
                                                                         {opts.map(o=>{
                                                                             const active=(c.status||'erfuellt')===o.v;
+                                                                            // 'na' immer erlaubt; sonst laut Matrix-allowed
+                                                                            const isAllowed=(o.v==='na')||!c.allowed||c.allowed.includes(o.v);
+                                                                            if(!isAllowed){
+                                                                                // gesperrt: ausgegraut, nicht klickbar
+                                                                                return(
+                                                                                <button key={o.v} disabled title="laut Bewertungsmatrix nicht anwendbar" style={{
+                                                                                    fontSize:"0.7rem",padding:"3px 9px",borderRadius:"9999px",cursor:"not-allowed",fontWeight:"600",
+                                                                                    background:"transparent",color:"#475569",border:"1px solid #334155",
+                                                                                    textDecoration:"line-through",opacity:0.5,
+                                                                                }}>{o.l}</button>
+                                                                                );
+                                                                            }
                                                                             return(
                                                                             <button key={o.v} onClick={()=>setCriterionStatus(item.id,c.nr,o.v)} style={{
                                                                                 fontSize:"0.7rem",padding:"3px 9px",borderRadius:"9999px",cursor:"pointer",fontWeight:"600",
